@@ -184,12 +184,13 @@ class MainInterface:
         self._render_sidebar()
         
         # Main content area
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🔍 Analysis", 
-            "📊 Visualization", 
+            "📊 Visualization", _
             "📋 Results", 
             "📄 Reports",
-            "⚙️ Settings"
+            "⚙️ Settings",
+            "ℹ️ Info"
         ])
         
         with tab1:
@@ -206,6 +207,66 @@ class MainInterface:
         
         with tab5:
             self._render_settings_tab()
+
+        with tab6:
+            self._render_info_tab()
+
+    def _render_info_tab(self):
+        """Render the info tab with interaction criteria."""
+        st.header("ℹ️ Interaction Detection Criteria")
+        st.write("This section details the criteria used to detect each type of noncovalent interaction.")
+
+        # Hydrogen Bonds
+        with st.expander("Hydrogen Bonds", expanded=True):
+            st.write("""
+            **Criteria:**
+            - **Distance Cutoff:** 3.5 Å (preliminary check)
+            - **Angle Cutoff:** 120.0° (D-H...A angle)
+            
+            **Source:** IUPAC Recommendations 2011
+            **Link:** [doi.org/10.1351/PAC-REP-10-01-01](https://doi.org/10.1351/PAC-REP-10-01-01)
+            """)
+
+        # Halogen Bonds
+        with st.expander("Halogen Bonds", expanded=True):
+            st.write("""
+            **Criteria:**
+            - **Distance Cutoff:** Sum of van der Waals radii of halogen and acceptor atoms.
+            - **Angle Cutoff:** 160.0° (R-X...Y angle)
+            
+            **Source:** IUPAC Recommendations 2013
+            **Link:** [doi.org/10.1351/PAC-REC-12-05-10](https://doi.org/10.1351/PAC-REC-12-05-10)
+            """)
+
+        # Pnictogen Bonds
+        with st.expander("Pnictogen Bonds", expanded=True):
+            st.write("""
+            **Criteria:**
+            - **Distance Cutoff:** Sum of van der Waals radii of pnictogen and acceptor atoms.
+            - **Angle Cutoff:** 150.0° (R-Pn...Y angle)
+            
+            **Source:** IUPAC Recommendations 2023
+            **Link:** [doi.org/10.1515/pac-2020-1002](https://doi.org/10.1515/pac-2020-1002)
+            """)
+
+        # Chalcogen Bonds
+        with st.expander("Chalcogen Bonds", expanded=True):
+            st.write("""
+            **Criteria:**
+            - Based on geometric parameters derived from statistical analysis of protein structures.
+            
+            **Source:** Sulfur-mediated chalcogen versus hydrogen bonds in proteins: a see-saw effect in the conformational space
+            **Link:** [biorxiv.org/content/10.1101/2023.03.24.534045v1](https://www.biorxiv.org/content/10.1101/2023.03.24.534045v1)
+            """)
+
+        # Other Interactions
+        with st.expander("Other Interactions", expanded=True):
+            st.write("""
+            Criteria for other interactions like π-π Stacking, C-H···π, Anion-π, etc., are based on a comprehensive review of unconventional noncovalent interactions.
+            
+            **Source:** The Realm of Unconventional Noncovalent Interactions in Proteins: Their Significance in Structure and Function
+            **Link:** [doi.org/10.1021/acsomega.3c02144](https://doi.org/10.1021/acsomega.3c02144)
+            """)
     
     def _render_sidebar(self):
         """Render the sidebar with input options and quick actions."""
