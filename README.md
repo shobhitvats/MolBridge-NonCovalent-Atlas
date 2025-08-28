@@ -351,6 +351,91 @@ If you use Protein Interaction Explorer in your research, please cite:
 - Performance optimizations
 - Extended API endpoints
 
+## 🚀 Deployment
+
+### Quick Start
+Your application now includes built-in deployment options! Access the **Settings** tab in your Streamlit app for deployment guides and configuration.
+
+### Option 1: Streamlit Cloud (Recommended - Free & Easy)
+1. **Push to GitHub**: Make sure your repository is public
+2. **Deploy**: Go to [share.streamlit.io](https://share.streamlit.io)
+3. **Connect**: Link your GitHub account and select this repository
+4. **Configure**: Set main file path to `server.py`
+5. **Launch**: Click "Deploy" - your app will be live instantly!
+
+**Your app URL**: `https://your-app-name.streamlit.app`
+
+**Note**: Streamlit Cloud automatically uses `requirements-prod.txt` if it exists, otherwise falls back to `requirements.txt`. The production requirements file excludes development dependencies for faster deployment.
+
+### Option 2: Heroku (Professional Hosting)
+1. **Install Heroku CLI**:
+   ```bash
+   curl https://cli-assets.heroku.com/install.sh | sh
+   ```
+
+2. **Deploy**:
+   ```bash
+   heroku create your-protein-app
+   git push heroku main
+   ```
+
+3. **Access**: Your app will be at `https://your-protein-app.herokuapp.com`
+
+### Option 3: Docker (Full Control)
+1. **Build the container**:
+   ```bash
+   docker build -t protein-interaction-app .
+   ```
+
+2. **Run locally**:
+   ```bash
+   docker run -p 8501:8501 protein-interaction-app
+   ```
+
+3. **Deploy to cloud platforms**:
+   - **AWS**: Use ECS or Elastic Beanstalk
+   - **Google Cloud**: Use Cloud Run
+   - **Azure**: Use Container Instances
+   - **DigitalOcean**: Use App Platform
+
+### Automated Deployment Script
+Use the included deployment helper:
+```bash
+./deploy.sh
+```
+
+This interactive script will guide you through all deployment options and check your setup.
+
+### Environment Variables
+Configure these for production deployment:
+
+```bash
+# Streamlit Configuration
+STREAMLIT_SERVER_PORT=8501
+STREAMLIT_SERVER_ADDRESS=0.0.0.0
+STREAMLIT_SERVER_HEADLESS=true
+STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+
+# Performance Tuning
+MAX_WORKERS=4
+MEMORY_LIMIT_GB=8
+```
+
+### Deployment Checklist
+- ✅ Repository is public on GitHub
+- ✅ Main file is `server.py`
+- ✅ `requirements.txt` includes all dependencies
+- ✅ App runs locally with `streamlit run server.py`
+- ✅ No hardcoded local paths
+- ✅ Sensitive data moved to environment variables
+- ✅ `.streamlit/config.toml` configured for production
+
+### Troubleshooting Deployment
+- **App won't start**: Check logs for missing dependencies
+- **Memory issues**: Reduce `MAX_WORKERS` or increase instance size
+- **Timeout errors**: Increase timeout limits in your hosting platform
+- **File upload issues**: Check `maxUploadSize` in `.streamlit/config.toml`
+
 ---
 
 **Built with ❤️ for the structural biology community**

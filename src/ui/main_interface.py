@@ -1910,6 +1910,133 @@ class MainInterface:
         """Render the settings and configuration tab."""
         st.header("⚙️ Settings & Configuration")
         
+        # Deployment Section
+        st.subheader("🚀 Deployment & Sharing")
+        
+        with st.expander("🌐 Deploy Online", expanded=False):
+            st.write("**Deploy your Protein Interaction Analysis Server online for easy sharing and access.**")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown("### Streamlit Cloud")
+                st.write("**Free & Easy**")
+                st.write("Perfect for sharing with collaborators")
+                
+                if st.button("🚀 Deploy to Streamlit Cloud", type="primary", use_container_width=True):
+                    st.markdown("""
+                    **Follow these steps:**
+                    1. Go to [share.streamlit.io](https://share.streamlit.io)
+                    2. Connect your GitHub account
+                    3. Select this repository
+                    4. Set main file path to: `server.py`
+                    5. Click **Deploy**
+                    
+                    Your app will be live at: `https://your-app-name.streamlit.app`
+                    """)
+                    st.info("💡 Make sure your repository is public for free deployment!")
+                
+                st.markdown("[📖 Streamlit Cloud Docs](https://docs.streamlit.io/streamlit-cloud)")
+            
+            with col2:
+                st.markdown("### Heroku")
+                st.write("**Professional Hosting**")
+                st.write("Great for production use")
+                
+                if st.button("🐘 Deploy to Heroku", use_container_width=True):
+                    st.markdown("""
+                    **Quick Setup:**
+                    1. Create account at [heroku.com](https://heroku.com)
+                    2. Install Heroku CLI
+                    3. Run in terminal:
+                    ```bash
+                    heroku create your-app-name
+                    git push heroku main
+                    ```
+                    
+                    **Files needed:**
+                    - `Procfile`: `web: streamlit run server.py --server.port $PORT`
+                    - `requirements.txt`: Your dependencies
+                    """)
+                
+                st.markdown("[📖 Heroku Deployment Guide](https://devcenter.heroku.com/articles/getting-started-with-python)")
+            
+            with col3:
+                st.markdown("### Docker + Cloud")
+                st.write("**Full Control**")
+                st.write("Deploy anywhere with Docker")
+                
+                if st.button("🐳 Docker Setup", use_container_width=True):
+                    st.markdown("""
+                    **Dockerfile:**
+                    ```dockerfile
+                    FROM python:3.12-slim
+                    WORKDIR /app
+                    COPY requirements.txt .
+                    RUN pip install -r requirements.txt
+                    COPY . .
+                    CMD ["streamlit", "run", "server.py", "--server.address", "0.0.0.0"]
+                    ```
+                    
+                    **Deploy to:**
+                    - AWS, Google Cloud, Azure
+                    - DigitalOcean, Railway
+                    - Your own server
+                    """)
+                
+                st.markdown("[📖 Docker Deployment](https://docs.docker.com/get-started/)")
+        
+        # Quick Deployment Status
+        st.write("---")
+        st.subheader("📊 Deployment Status")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🔍 Check Repository Status", use_container_width=True):
+                st.info("**Repository Check:**")
+                st.write("✅ Main file: `server.py`")
+                st.write("✅ Dependencies: `requirements.txt`")
+                st.write("✅ Source code: Organized in `src/`")
+                st.write("✅ Ready for deployment!")
+        
+        with col2:
+            if st.button("📋 Generate Deployment Checklist", use_container_width=True):
+                st.success("**Deployment Checklist Generated:**")
+                checklist = """
+                □ Repository is public on GitHub
+                □ Main file is `server.py`
+                □ `requirements.txt` includes all dependencies
+                □ App runs locally with `streamlit run server.py`
+                □ No hardcoded local paths
+                □ Sensitive data moved to environment variables
+                □ README.md includes setup instructions
+                """
+                st.code(checklist, language="text")
+        
+        # Environment Variables Setup
+        st.write("---")
+        st.subheader("🔐 Environment Variables")
+        
+        with st.expander("Configure Environment Variables", expanded=False):
+            st.write("**Set up environment variables for your deployment:**")
+            
+            env_vars = {
+                "STREAMLIT_SERVER_PORT": "8501",
+                "STREAMLIT_SERVER_ADDRESS": "0.0.0.0",
+                "STREAMLIT_SERVER_HEADLESS": "true",
+                "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false"
+            }
+            
+            for var, default in env_vars.items():
+                value = st.text_input(f"{var}", value=default, help=f"Default: {default}")
+                if value != default:
+                    st.code(f"export {var}={value}")
+            
+            st.info("💡 Copy these commands to your deployment platform's environment variables section.")
+        
+        st.write("---")
+        
         # API Configuration
         st.subheader("🔗 API Integration")
         

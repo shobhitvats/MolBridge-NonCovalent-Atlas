@@ -1,0 +1,60 @@
+[global]
+
+# If false, makes your Streamlit script aware of its own location
+developmentMode = false
+
+# Allows you to type a variable or string by itself in a single line of Python code to write it to the app
+dataFrameSerialization = "legacy"
+
+[logger]
+
+# Level of logging: 'error', 'warning', 'info', 'debug'
+level = "info"
+
+[client]
+
+# Whether to enable st.cache
+caching = true
+
+# If false, will attempt to open a new tab or window when the user clicks on a URL
+showSidebarNavigation = true
+
+# Controls whether uncaught app exceptions are displayed in the browser. By default, this is set to True and Streamlit displays app exceptions and associated tracebacks in the browser.
+showErrorDetails = true
+
+[server]
+
+# List of folders that should not be watched for changes. This impacts both "Run on Save" and @st.cache
+folderWatchBlacklist = ['']
+
+# Change the type of file watcher used by Streamlit, or turn it off completely
+fileWatcherType = "auto"
+
+# Symmetric key used to produce signed cookies. If deploying on multiple replicas, this should be set to the same value across all replicas to ensure they all validate cookies identically
+cookieSecret = "a-random-key-appears-here"
+
+# If false, will attempt to open a new tab or window when the user clicks on a URL
+enableCORS = false
+
+# Enables support for Cross-Site Request Forgery (XSRF) protection, which is highly recommended for production deployments
+enableXsrfProtection = true
+
+# Max size, in megabytes, for files uploaded with the file_uploader
+maxUploadSize = 200
+
+# Max size, in megabytes, of messages that can be sent via the WebSocket connection
+maxMessageSize = 200
+
+# Enables support for websocket compression
+enableWebsocketCompression = false
+
+[browser]
+
+# Internet address where users should point their browsers in order to connect to the app
+serverAddress = "0.0.0.0"
+
+# Whether to send usage statistics to Streamlit
+gatherUsageStats = false
+
+# Port where users should point their browsers in order to connect to the app
+serverPort = 8501
