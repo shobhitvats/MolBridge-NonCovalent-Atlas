@@ -34,8 +34,20 @@ class PnictogenBondDetector:
         """
         self.config = config
         self.interaction_config = config.interactions
-        self.distance_cutoff = getattr(self.interaction_config, 'pnictogen_distance_cutoff', 4.0)
-        self.angle_cutoff = getattr(self.interaction_config, 'pnictogen_angle_cutoff', 140.0)
+        self.angle_cutoff = 150.0  # Based on IUPAC recommendations (R-Pn...Y angle, allows for more deviation)
+        
+        # Van der Waals radii for pnictogen bond calculation
+        self.vdw_radii = {
+            'N': 1.55,
+            'P': 1.80,
+            'AS': 1.85,
+            'O': 1.52,
+            'S': 1.80,
+            'F': 1.47,
+            'CL': 1.75,
+            'BR': 1.85,
+            'I': 1.98
+        }
         
         # Pnictogen atoms (group 15 elements)
         self.pnictogen_atoms = {'N', 'P', 'AS'}
@@ -65,8 +77,9 @@ class PnictogenBondDetector:
                     continue
                 
                 distance = self._calculate_distance(pnictogen, acceptor)
+                vdw_sum = self.vdw_radii.get(pnictogen.element, 0) + self.vdw_radii.get(acceptor.element, 0)
                 
-                if distance <= self.distance_cutoff:
+                if distance <= vdw_sum:
                     # Calculate angle (pnictogen-bond-acceptor)
                     angle = self._calculate_pnictogen_angle(pnictogen, acceptor)
                     
@@ -117,7 +130,9 @@ class PnictogenBondDetector:
         return angle
     
     def _classify_bond_strength(self, distance: float) -> str:
-        """Classify bond strength based on distance."""
+        """Classify bond strength based on distance.
+        Note: This is an approximation as the IUPAC definition does not provide a method for this.
+        """
         if distance <= 3.0:
             return 'strong'
         elif distance <= 3.5:

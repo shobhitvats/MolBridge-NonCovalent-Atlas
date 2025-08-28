@@ -35,8 +35,7 @@ class HalogenBondDetector:
         """
         self.config = config
         self.interaction_config = config.interactions
-        self.angle_cutoff = 170.0  # C-X...A angle should be ~170° (linear)
-        self.angle_tolerance = 20.0  # Allow ±20° around optimal angle
+        self.angle_cutoff = 160.0  # Based on IUPAC recommendations (R-X...Y angle)
         
         # Van der Waals radii for halogen bond calculation
         self.vdw_radii = {
@@ -71,17 +70,6 @@ class HalogenBondDetector:
             'MET': ['SD'],            # Methionine sulfur
             'CYS': ['SG'],            # Cysteine sulfur
             'backbone': ['O', 'N']    # Backbone atoms
-        }
-        
-        # Van der Waals radii for distance calculations
-        self.vdw_radii = {
-            'F': 1.47,
-            'Cl': 1.75,
-            'Br': 1.85,
-            'I': 1.98,
-            'O': 1.52,
-            'N': 1.55,
-            'S': 1.80
         }
     
     def detect_halogen_bonds(self, structure: Structure.Structure) -> List[HalogenBond]:
@@ -233,9 +221,8 @@ class HalogenBondDetector:
         
         # Apply distance cutoff with van der Waals consideration
         vdw_sum = self._get_vdw_sum(halogen_info['halogen_type'], acceptor_atom)
-        effective_cutoff = min(self.distance_cutoff, vdw_sum + 0.5)  # Allow some overlap
         
-        if distance > effective_cutoff:
+        if distance > vdw_sum:
             return None
         
         # Calculate C-X...A angle if carbon is found
@@ -245,10 +232,6 @@ class HalogenBondDetector:
         
         # Check angle cutoff
         if angle < self.angle_cutoff:
-            return None
-        
-        # Check directionality (halogen bonds are highly directional)
-        if not self._check_directionality(halogen_atom, acceptor_atom, carbon_atom):
             return None
         
         # Calculate bond strength
@@ -289,28 +272,10 @@ class HalogenBondDetector:
         
         return np.degrees(np.arccos(cos_angle))
     
-    def _check_directionality(self, halogen_atom: Atom.Atom, acceptor_atom: Atom.Atom, carbon_atom: Optional[Atom.Atom]) -> bool:
-        """Check if the halogen bond has proper directionality."""
-        if not carbon_atom:
-            return True  # Can't check without carbon reference
-        
-        # The sigma hole in halogen bonds is along the C-X axis
-        # Check if acceptor is roughly along this axis
-        cx_vector = halogen_atom.get_coord() - carbon_atom.get_coord()
-        xa_vector = acceptor_atom.get_coord() - halogen_atom.get_coord()
-        
-        # Normalize vectors
-        cx_vector = cx_vector / np.linalg.norm(cx_vector)
-        xa_vector = xa_vector / np.linalg.norm(xa_vector)
-        
-        # Calculate dot product (should be close to 1 for good alignment)
-        dot_product = np.dot(cx_vector, xa_vector)
-        
-        # Allow some deviation from perfect linearity
-        return dot_product > 0.5  # Corresponds to angle < 60 degrees
-    
     def _calculate_bond_strength(self, distance: float, angle: float, halogen_type: str) -> str:
-        """Calculate halogen bond strength."""
+        """Calculate halogen bond strength based on geometry. 
+        Note: This is an approximation as the IUPAC definition does not provide a method for this.
+        """
         # Halogen bond strength increases: F < Cl < Br < I
         strength_factors = {'F': 0.5, 'Cl': 1.0, 'Br': 1.5, 'I': 2.0}
         halogen_factor = strength_factors.get(halogen_type, 1.0)
