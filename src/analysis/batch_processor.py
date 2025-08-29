@@ -91,6 +91,28 @@ class HighPerformanceBatchProcessor:
         logger.info(f"Parallel processing: {'Enabled' if use_parallel else 'Disabled'}")
         logger.info(f"Max workers: {self.processor.max_workers}")
     
+    def _get_interaction_property(self, interaction: Any, property_name: str, default_value: Any = None) -> Any:
+        """
+        Get a property from an interaction object, handling both dictionary and object styles.
+        
+        Args:
+            interaction: The interaction object (dict or dataclass)
+            property_name: Name of the property to retrieve
+            default_value: Default value if property is not found
+            
+        Returns:
+            The property value or default_value
+        """
+        if hasattr(interaction, property_name):
+            # Object-style interaction (e.g., HydrogenBond dataclass)
+            return getattr(interaction, property_name, default_value)
+        elif isinstance(interaction, dict):
+            # Dictionary-style interaction
+            return interaction.get(property_name, default_value)
+        else:
+            # Unknown format, return default
+            return default_value
+    
     def _filter_detectors(self, interaction_filters: Optional[List[str]] = None) -> List:
         """Filter detector classes based on selected interaction types."""
         if not interaction_filters:
@@ -790,8 +812,8 @@ class BatchProcessor:
         # Count interactions per residue
         for interaction_type, interaction_list in interactions.items():
             for interaction in interaction_list:
-                res1 = f"{interaction.get('chain1', '')}{interaction.get('residue1', '')}"
-                res2 = f"{interaction.get('chain2', '')}{interaction.get('residue2', '')}"
+                res1 = f"{self._get_interaction_property(interaction, 'chain1', '')}{self._get_interaction_property(interaction, 'residue1', '')}"
+                res2 = f"{self._get_interaction_property(interaction, 'chain2', '')}{self._get_interaction_property(interaction, 'residue2', '')}"
                 
                 residue_counts[res1] = residue_counts.get(res1, 0) + 1
                 residue_counts[res2] = residue_counts.get(res2, 0) + 1

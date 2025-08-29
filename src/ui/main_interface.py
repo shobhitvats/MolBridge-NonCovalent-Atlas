@@ -55,8 +55,6 @@ class MainInterface:
             st.session_state.current_pdb = None
         if 'interaction_filters' not in st.session_state:
             st.session_state.interaction_filters = get_interaction_types()
-        if 'strength_filter' not in st.session_state:
-            st.session_state.strength_filter = 'all'  # Options: 'strong', 'strong_moderate', 'all'
         # Initialize individual strength filters for each interaction type
         if 'individual_strength_filters' not in st.session_state:
             interaction_types = get_interaction_types()
@@ -79,104 +77,64 @@ class MainInterface:
         if widget_key in st.session_state:
             st.session_state.selected_interactions[itype] = st.session_state[widget_key]
 
-    def _render_individual_strength_filters(self, interaction_types, display_names):
-        """Render the individual strength filter UI."""
-        st.write("---")
-        st.write("**Individual Strength Filters:**")
-        st.caption("Set strength filter for each interaction type independently")
-        with st.expander("🎛️ Configure Strength Filters", expanded=False):
-            strength_options = {
-                'strong': 'Strong only',
-                'strong_moderate': 'Strong & Moderate',
-                'all': 'All (Strong, Moderate, Weak)'
-            }
+    def _render_interaction_strength_filters(self):
+        """Render the integrated interaction and strength filter UI in the sidebar."""
+        st.subheader("🔬 Select Interactions & Strength")
+        
+        interaction_types = get_interaction_types()
+        display_names = get_interaction_display_names()
 
-            # Only render controls for interaction types that are currently selected by the user
-            selected = st.session_state.get('selected_interactions', {itype: True for itype in interaction_types})
+        if 'selected_interactions' not in st.session_state:
+            st.session_state.selected_interactions = {itype: False for itype in interaction_types}
 
-            # Organize by interaction categories
-            st.write("**σ-hole Interactions:**")
-            sigma_hole_types = ["halogenbond", "chalcogenbond", "pnictogenbond", "tetrelbond"]
-            col1, col2 = st.columns(2)
-            for i, itype in enumerate(sigma_hole_types):
-                if itype in interaction_types and selected.get(itype, False):
-                    col = col1 if i % 2 == 0 else col2
-                    with col:
-                        strength_keys = list(strength_options.keys())
-                        default_value = st.session_state.individual_strength_filters.get(itype, 'all')
-                        current_index = strength_keys.index(default_value)
-                        st.radio(
-                            f"{display_names[itype]}:",
-                            options=strength_keys,
-                            format_func=lambda x: strength_options[x],
-                            index=current_index,
-                            key=f"strength_{itype}",
-                            on_change=self._update_individual_strength_filter,
-                            args=(itype,)
-                        )
+        strength_options = {
+            'strong': 'Strong',
+            'strong_moderate': 'S+M',
+            'all': 'All'
+        }
+        strength_keys = list(strength_options.keys())
 
-            st.write("**π-System Interactions:**")
-            pi_types = ["pipi", "anionpi", "chpi", "npistar"]
-            col1, col2 = st.columns(2)
-            for i, itype in enumerate(pi_types):
-                if itype in interaction_types and selected.get(itype, False):
-                    col = col1 if i % 2 == 0 else col2
-                    with col:
-                        strength_keys = list(strength_options.keys())
-                        default_value = st.session_state.individual_strength_filters.get(itype, 'all')
-                        current_index = strength_keys.index(default_value)
-                        st.radio(
-                            f"{display_names[itype]}:",
-                            options=strength_keys,
-                            format_func=lambda x: strength_options[x],
-                            index=current_index,
-                            key=f"strength_{itype}",
-                            on_change=self._update_individual_strength_filter,
-                            args=(itype,)
-                        )
+        # Quick selection buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Select All", help="Select all interaction types"):
+                for itype in interaction_types:
+                    st.session_state.selected_interactions[itype] = True
+                st.rerun()
+        
+        with col2:
+            if st.button("Clear All", help="Deselect all interaction types"):
+                for itype in interaction_types:
+                    st.session_state.selected_interactions[itype] = False
+                st.rerun()
 
-            st.write("**Basic Interactions:**")
-            basic_types = ["hydrogenbond", "ionicinteraction", "hydrophobiccontact", "dispersion"]
-            col1, col2 = st.columns(2)
-            for i, itype in enumerate(basic_types):
-                if itype in interaction_types and selected.get(itype, False):
-                    col = col1 if i % 2 == 0 else col2
-                    with col:
-                        strength_keys = list(strength_options.keys())
-                        default_value = st.session_state.individual_strength_filters.get(itype, 'all')
-                        current_index = strength_keys.index(default_value)
-                        st.radio(
-                            f"{display_names[itype]}:",
-                            options=strength_keys,
-                            format_func=lambda x: strength_options[x],
-                            index=current_index,
-                            key=f"strength_{itype}",
-                            on_change=self._update_individual_strength_filter,
-                            args=(itype,)
-                        )
-
-            # Quick preset buttons (apply to currently selected interaction types)
-            st.write("---")
-            st.write("**Quick Presets:**")
-            col1, col2, col3 = st.columns(3)
+        # Interaction selection with integrated strength filters
+        for itype in interaction_types:
+            col1, col2 = st.columns([3, 2])
             with col1:
-                if st.button("🟢 All Strong", help="Set all interactions to show only strong"):
-                    for itype in interaction_types:
-                        if selected.get(itype, False):
-                            st.session_state.individual_strength_filters[itype] = 'strong'
-                    st.rerun()
-            with col2:
-                if st.button("🟡 All Strong+Moderate", help="Set all interactions to show strong and moderate"):
-                    for itype in interaction_types:
-                        if selected.get(itype, False):
-                            st.session_state.individual_strength_filters[itype] = 'strong_moderate'
-                    st.rerun()
-            with col3:
-                if st.button("🔵 All Show Everything", help="Set all interactions to show all strengths"):
-                    for itype in interaction_types:
-                        if selected.get(itype, False):
-                            st.session_state.individual_strength_filters[itype] = 'all'
-                    st.rerun()
+                widget_key = f"sidebar_interaction_{itype}"
+                st.checkbox(
+                    display_names[itype],
+                    value=st.session_state.selected_interactions.get(itype, False),
+                    key=widget_key,
+                    on_change=self._update_interaction_filter,
+                    args=(itype, widget_key)
+                )
+            
+            if st.session_state.selected_interactions.get(itype, False):
+                with col2:
+                    default_value = st.session_state.individual_strength_filters.get(itype, 'all')
+                    current_index = strength_keys.index(default_value)
+                    st.radio(
+                        f"Strength for {display_names[itype]}",
+                        options=strength_keys,
+                        format_func=lambda x: strength_options[x],
+                        index=current_index,
+                        key=f"strength_{itype}",
+                        on_change=self._update_individual_strength_filter,
+                        args=(itype,),
+                        label_visibility="collapsed"
+                    )
 
     def render(self):
         """Render the main interface."""
@@ -186,7 +144,7 @@ class MainInterface:
         # Main content area
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🔍 Analysis", 
-            "📊 Visualization", _
+            "📊 Visualization", 
             "📋 Results", 
             "📄 Reports",
             "⚙️ Settings",
@@ -214,14 +172,14 @@ class MainInterface:
     def _render_info_tab(self):
         """Render the info tab with interaction criteria."""
         st.header("ℹ️ Interaction Detection Criteria")
-        st.write("This section details the criteria used to detect each type of noncovalent interaction.")
+        st.write("This section details the criteria used to detect each type of noncovalent interaction, along with their sources.")
 
         # Hydrogen Bonds
         with st.expander("Hydrogen Bonds", expanded=True):
             st.write("""
             **Criteria:**
             - **Distance Cutoff:** 3.5 Å (preliminary check)
-            - **Angle Cutoff:** 120.0° (D-H...A angle)
+            - **Angle Cutoff:** 120.0° (D-H...A angle) 
             
             **Source:** IUPAC Recommendations 2011
             **Link:** [doi.org/10.1351/PAC-REP-10-01-01](https://doi.org/10.1351/PAC-REP-10-01-01)
@@ -260,7 +218,7 @@ class MainInterface:
             """)
 
         # Other Interactions
-        with st.expander("Other Interactions", expanded=True):
+        with st.expander("Other Interactions (π-π, C-H···π, Anion-π, etc.)", expanded=True):
             st.write("""
             Criteria for other interactions like π-π Stacking, C-H···π, Anion-π, etc., are based on a comprehensive review of unconventional noncovalent interactions.
             
@@ -274,7 +232,7 @@ class MainInterface:
             st.header("🧬 Quick Analysis")
             
             # Quick PDB Entry Section
-            st.subheader("� PDB Entry")
+            st.subheader("PDB Entry")
             with st.form("sidebar_pdb_form"):
                 pdb_id = st.text_input(
                     "PDB ID:",
@@ -293,78 +251,8 @@ class MainInterface:
             
             st.divider()
             
-            # Interaction selection in sidebar
-            st.subheader("🔬 Select Interactions")
-            
-            # Get interaction types and display names
-            interaction_types = get_interaction_types()
-            display_names = get_interaction_display_names()
-            
-            # Initialize selected interactions in session state if not exists
-            if 'selected_interactions' not in st.session_state:
-                st.session_state.selected_interactions = {itype: False for itype in interaction_types}
-            
-            # Quick selection buttons
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Select All", help="Select all interaction types"):
-                    for itype in interaction_types:
-                        st.session_state.selected_interactions[itype] = True
-                    st.rerun()
-            
-            with col2:
-                if st.button("Clear All", help="Deselect all interaction types"):
-                    for itype in interaction_types:
-                        st.session_state.selected_interactions[itype] = False
-                    st.rerun()
-            
-            # Interaction checkboxes in two columns
-            col1, col2 = st.columns(2)
-            
-            # Basic interactions
-            basic_interactions = [
-                "hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                "dispersion", "pipi", "chpi"
-            ]
-            
-            # Advanced interactions  
-            advanced_interactions = [
-                "halogenbond", "chalcogenbond", "pnictogenbond", 
-                "tetrelbond", "anionpi", "npistar"
-            ]
-            
-            with col1:
-                st.write("**Basic:**")
-                for itype in basic_interactions:
-                    if itype in interaction_types:
-                        widget_key = f"sidebar_basic_{itype}"
-                        st.checkbox(
-                            display_names[itype],
-                            value=st.session_state.selected_interactions.get(itype, False),
-                            key=widget_key,
-                            on_change=self._update_interaction_filter,
-                            args=(itype, widget_key)
-                        )
-            
-            with col2:
-                st.write("**Advanced:**")
-                for itype in advanced_interactions:
-                    if itype in interaction_types:
-                        widget_key = f"sidebar_advanced_{itype}"
-                        st.checkbox(
-                            display_names[itype],
-                            value=st.session_state.selected_interactions.get(itype, False),
-                            key=widget_key,
-                            on_change=self._update_interaction_filter,
-                            args=(itype, widget_key)
-                        )
-            
-            # Show count of selected interactions
-            selected_count = sum(1 for selected in st.session_state.selected_interactions.values() if selected)
-            if selected_count > 0:
-                st.success(f"✅ {selected_count} interaction(s) selected")
-            else:
-                st.info("ℹ️ No interactions selected")
+            # Interaction and strength selection
+            self._render_interaction_strength_filters()
             
             st.divider()
             
@@ -492,118 +380,6 @@ class MainInterface:
     def _render_single_input(self):
         """Render single PDB ID input interface."""
         
-        # Interaction selection section (outside the form)
-        st.subheader("🔬 Select Interactions to Analyze")
-        
-        # Get interaction types and display names
-        interaction_types = get_interaction_types()
-        display_names = get_interaction_display_names()
-        
-        # Initialize selected interactions in session state if not exists
-        if 'selected_interactions' not in st.session_state:
-            st.session_state.selected_interactions = {itype: True for itype in interaction_types}
-        
-        # Quick selection buttons (outside form)
-        st.write("**Quick Selection:**")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("All", use_container_width=True, key="select_all", help="Select all interactions"):
-                for itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = True
-                st.rerun()
-            
-            if st.button("Basic", use_container_width=True, key="select_basic", help="Select basic interactions only"):
-                basic_interactions = [
-                    "hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                    "dispersion", "pipi", "chpi"
-                ]
-                for itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = itype in basic_interactions
-                st.rerun()
-        
-        with col2:
-            if st.button("None", use_container_width=True, key="select_none", help="Deselect all interactions"):
-                for itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = False
-                st.rerun()
-            
-            if st.button("Standard", use_container_width=True, key="select_standard", help="Select literature standard interactions"):
-                standard_interactions = [
-                    "hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                    "pipi", "halogenbond", "chalcogenbond"
-                ]
-                for itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = itype in standard_interactions
-                st.rerun()
-        
-        # Create columns for better layout of checkboxes
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Basic Interactions:**")
-            # Basic interactions
-            basic_interactions = [
-                "hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                "dispersion", "pipi", "chpi"
-            ]
-            
-            for itype in basic_interactions:
-                if itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = st.checkbox(
-                        display_names[itype],
-                        value=st.session_state.selected_interactions.get(itype, False),
-                        key=f"basic_{itype}"
-                    )
-        
-        with col2:
-            st.write("**Advanced Interactions:**")
-            # Advanced interactions
-            advanced_interactions = [
-                "halogenbond", "chalcogenbond", "pnictogenbond", 
-                "tetrelbond", "anionpi", "npistar"
-            ]
-            
-            for itype in advanced_interactions:
-                if itype in interaction_types:
-                    st.session_state.selected_interactions[itype] = st.checkbox(
-                        display_names[itype],
-                        value=st.session_state.selected_interactions.get(itype, False),
-                        key=f"advanced_{itype}"
-                    )
-        
-        # Individual strength filtering options (centralized helper respects selected interactions)
-        st.write("---")
-        self._render_individual_strength_filters(interaction_types, display_names)
-
-        # Strength options (used for summary display)
-        strength_options = {
-            'strong': 'Strong only',
-            'strong_moderate': 'Strong & Moderate',
-            'all': 'All (Strong, Moderate, Weak)'
-        }
-
-        # Show current filter summary
-        filter_summary = {}
-        for itype in interaction_types:
-            filter_val = st.session_state.individual_strength_filters.get(itype, 'all')
-            if filter_val not in filter_summary:
-                filter_summary[filter_val] = []
-            filter_summary[filter_val].append(display_names[itype])
-
-        if any(filter_val != 'all' for filter_val in st.session_state.individual_strength_filters.values()):
-            st.info("🔍 **Custom filters active** - Use expander above to modify")
-            for filter_val, types in filter_summary.items():
-                if filter_val != 'all':
-                    st.caption(f"**{strength_options[filter_val]}**: {', '.join(types)}")
-        
-        # Show count of selected interactions
-        selected_count = sum(1 for selected in st.session_state.selected_interactions.values() if selected)
-        if selected_count == 0:
-            st.warning("⚠️ No interactions selected! Please select at least one interaction type.")
-        else:
-            st.info(f"✅ {selected_count} interaction type(s) selected for analysis")
-        
         # Create a form for PDB input and submission
         with st.form(key="pdb_analysis_form", clear_on_submit=False):
             pdb_id = st.text_input(
@@ -617,11 +393,12 @@ class MainInterface:
                 "🚀 Analyze Structure", 
                 type="primary", 
                 use_container_width=True,
-                disabled=(selected_count == 0)
+                disabled=(sum(1 for selected in st.session_state.selected_interactions.values() if selected) == 0)
             )
             
             if submitted:
                 if pdb_id and len(pdb_id) == 4:
+                    selected_count = sum(1 for selected in st.session_state.selected_interactions.values() if selected)
                     if selected_count > 0:
                         # Filter selected interactions
                         selected_interaction_types = [
@@ -685,9 +462,9 @@ class MainInterface:
                     
                     if selected_count > 0:
                         st.info(f"✅ Will analyze {selected_count} interaction types: {', '.join(selected_names)}")
-                        st.caption("💡 Modify interaction selection in the 'Single PDB ID' tab above")
+                        st.caption("💡 Modify interaction selection in the sidebar")
                     else:
-                        st.warning("⚠️ No interactions selected! Please select interactions in the 'Single PDB ID' tab first.")
+                        st.warning("⚠️ No interactions selected! Please select interactions in the sidebar first.")
                     
                     if st.button("🚀 Analyze Batch", type="primary", use_container_width=True, disabled=(selected_count == 0)):
                         # Filter selected interactions
@@ -1004,6 +781,7 @@ class MainInterface:
         
         if not st.session_state.analysis_results:
             st.info("👆 Use the sidebar to input structures for analysis")
+            self._render_single_input()
             return
         
         # Ensure a PDB is selected if results exist, to prevent KeyErrors
@@ -1014,265 +792,6 @@ class MainInterface:
         # Display current results summary
         self._render_analysis_summary()
         
-        # Create main sections with better organization
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            # Interaction type selection with better layout
-            st.subheader("🔬 Interaction Types Selection")
-            
-            interaction_types = get_interaction_types()
-            display_names = get_interaction_display_names()
-            
-            # Quick selection buttons
-            st.write("**Quick Selection:**")
-            btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
-            
-            with btn_col1:
-                if st.button("✅ All", use_container_width=True, key="analysis_select_all"):
-                    st.session_state.interaction_filters = interaction_types.copy()
-                    st.rerun()
-            
-            with btn_col2:
-                if st.button("🔹 Basic", use_container_width=True, key="analysis_select_basic"):
-                    basic_interactions = [
-                        "hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                        "dispersion", "pipi", "chpi"
-                    ]
-                    st.session_state.interaction_filters = [
-                        itype for itype in basic_interactions if itype in interaction_types
-                    ]
-                    st.rerun()
-            
-            with btn_col3:
-                if st.button("🔸 σ-hole", use_container_width=True, key="analysis_select_sigma"):
-                    sigma_interactions = [
-                        "halogenbond", "chalcogenbond", "pnictogenbond", "tetrelbond"
-                    ]
-                    st.session_state.interaction_filters = [
-                        itype for itype in sigma_interactions if itype in interaction_types
-                    ]
-                    st.rerun()
-            
-            with btn_col4:
-                if st.button("❌ None", use_container_width=True, key="analysis_select_none"):
-                    st.session_state.interaction_filters = []
-                    st.rerun()
-            
-            st.write("---")
-            
-            # Organized interaction checkboxes
-            interaction_tabs = st.tabs([
-                "🔹 Basic", 
-                "🔸 σ-hole", 
-                "🔺 π-System",
-                "🔻 Other"
-            ])
-            
-            with interaction_tabs[0]:
-                basic_interactions = [
-                    "hydrogenbond", "ionicinteraction", "hydrophobiccontact", "dispersion"
-                ]
-                basic_cols = st.columns(2)
-                for i, itype in enumerate(basic_interactions):
-                    if itype in interaction_types:
-                        with basic_cols[i % 2]:
-                            current_val = itype in st.session_state.interaction_filters
-                            new_val = st.checkbox(
-                                display_names[itype],
-                                value=current_val,
-                                key=f"analysis_filter_{itype}"
-                            )
-                            # Update filters
-                            if new_val and itype not in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.append(itype)
-                            elif not new_val and itype in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.remove(itype)
-            
-            with interaction_tabs[1]:
-                sigma_interactions = [
-                    "halogenbond", "chalcogenbond", "pnictogenbond", "tetrelbond"
-                ]
-                sigma_cols = st.columns(2)
-                for i, itype in enumerate(sigma_interactions):
-                    if itype in interaction_types:
-                        with sigma_cols[i % 2]:
-                            current_val = itype in st.session_state.interaction_filters
-                            new_val = st.checkbox(
-                                display_names[itype],
-                                value=current_val,
-                                key=f"analysis_filter_{itype}"
-                            )
-                            # Update filters
-                            if new_val and itype not in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.append(itype)
-                            elif not new_val and itype in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.remove(itype)
-            
-            with interaction_tabs[2]:
-                pi_interactions = [
-                    "pipi", "chpi", "anionpi", "npistar"
-                ]
-                pi_cols = st.columns(2)
-                for i, itype in enumerate(pi_interactions):
-                    if itype in interaction_types:
-                        with pi_cols[i % 2]:
-                            current_val = itype in st.session_state.interaction_filters
-                            new_val = st.checkbox(
-                                display_names[itype],
-                                value=current_val,
-                                key=f"analysis_filter_{itype}"
-                            )
-                            # Update filters
-                            if new_val and itype not in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.append(itype)
-                            elif not new_val and itype in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.remove(itype)
-            
-            with interaction_tabs[3]:
-                # Any remaining interactions
-                other_interactions = [
-                    itype for itype in interaction_types 
-                    if itype not in ["hydrogenbond", "ionicinteraction", "hydrophobiccontact", 
-                                    "dispersion", "halogenbond", "chalcogenbond", "pnictogenbond", 
-                                    "tetrelbond", "pipi", "chpi", "anionpi", "npistar"]
-                ]
-                if other_interactions:
-                    other_cols = st.columns(2)
-                    for i, itype in enumerate(other_interactions):
-                        with other_cols[i % 2]:
-                            current_val = itype in st.session_state.interaction_filters
-                            new_val = st.checkbox(
-                                display_names[itype],
-                                value=current_val,
-                                key=f"analysis_filter_{itype}"
-                            )
-                            # Update filters
-                            if new_val and itype not in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.append(itype)
-                            elif not new_val and itype in st.session_state.interaction_filters:
-                                st.session_state.interaction_filters.remove(itype)
-                else:
-                    st.info("No other interaction types available")
-        
-        with col2:
-            # Strength filtering - prominent display
-            st.subheader("⚖️ Interaction Strength Filter")
-            
-            strength_options = {
-                'strong': '💪 Strong only',
-                'strong_moderate': '⚖️ Strong & Moderate', 
-                'all': '📊 All (Strong, Moderate, Weak)'
-            }
-            
-            current_filter = st.session_state.strength_filter
-            
-            # Show current filter prominently
-            if current_filter == 'strong':
-                st.success("🎯 **Currently showing:** Strong interactions only")
-            elif current_filter == 'strong_moderate':
-                st.info("⚖️ **Currently showing:** Strong & Moderate interactions")
-            else:
-                st.info("📊 **Currently showing:** All interaction strengths")
-            
-            # Show current individual strength filter settings
-            st.subheader("🎛️ Active Strength Filters")
-            
-            active_filters = {itype: filter_val for itype, filter_val in st.session_state.individual_strength_filters.items() if filter_val != 'all'}
-            
-            if active_filters:
-                st.success("Individual strength filters are active!")
-                
-                # Group by filter type for display
-                filter_groups = {}
-                for itype, filter_val in active_filters.items():
-                    if filter_val not in filter_groups:
-                        filter_groups[filter_val] = []
-                    filter_groups[filter_val].append(get_interaction_display_names()[itype])
-                
-                strength_options = {
-                    'strong': '🟢 Strong only',
-                    'strong_moderate': '🟡 Strong & Moderate',
-                    'all': '🔵 All (Strong, Moderate, Weak)'
-                }
-                
-                for filter_val, types in filter_groups.items():
-                    with st.container():
-                        st.write(f"**{strength_options[filter_val]}:**")
-                        st.write(f"• {', '.join(types)}")
-                
-                # Quick actions
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("📊 Go to Filter Settings", key="goto_filters"):
-                        st.info("💡 Use the 'Single PDB ID' tab to modify individual strength filters")
-                
-                with col2:
-                    if st.button("🔄 Reset All to 'All'", key="reset_filters"):
-                        interaction_types = get_interaction_types()
-                        for itype in interaction_types:
-                            st.session_state.individual_strength_filters[itype] = 'all'
-                        st.success("All filters reset to show all strengths!")
-                        st.rerun()
-            else:
-                st.info("🔵 **All interaction types** are set to show **all strengths**")
-                if st.button("🎛️ Configure Individual Filters"):
-                    self._render_individual_strength_filters(get_interaction_types(), get_interaction_display_names())
-            
-            st.write("---")
-            
-            # Quick stats about current filters
-            if st.session_state.current_pdb and st.session_state.current_pdb in st.session_state.analysis_results:
-                result = st.session_state.analysis_results[st.session_state.current_pdb]
-                if 'interactions' in result:
-                    total_interactions = sum(len(interactions) for interactions in result['interactions'].values())
-                    
-                    # Calculate filtered interactions using individual filters
-                    filtered_result = self._apply_individual_strength_filters(result['interactions'])
-                    filtered_count = sum(len(interactions) for interactions in filtered_result.values())
-                    
-                    st.metric(
-                        "Filtered Interactions",
-                        f"{filtered_count}",
-                        f"of {total_interactions} total"
-                    )
-                    
-                    if total_interactions > 0:
-                        filter_percentage = (filtered_count / total_interactions) * 100
-                        st.progress(filter_percentage / 100)
-                        st.caption(f"{filter_percentage:.1f}% of interactions shown")
-            
-            st.write("---")
-            
-            # Structure selection if multiple
-            if len(st.session_state.analysis_results) > 1:
-                st.subheader("🏗️ Structure Selection")
-                structure_options = list(st.session_state.analysis_results.keys())
-                current_structure = st.selectbox(
-                    "Select structure:",
-                    structure_options,
-                    index=structure_options.index(st.session_state.current_pdb) 
-                    if st.session_state.current_pdb in structure_options else 0,
-                    key="analysis_structure_selector"
-                )
-                if current_structure != st.session_state.current_pdb:
-                    st.session_state.current_pdb = current_structure
-                    st.rerun()
-        
-        # Parameter tuning section
-        st.write("---")
-        st.subheader("🎛️ Parameter Tuning")
-        
-        # Show parameter status
-        if 'custom_parameters' in st.session_state and st.session_state.custom_parameters:
-            param_count = len(st.session_state.custom_parameters)
-            st.success(f"✅ {param_count} custom parameters active")
-        else:
-            st.info("ℹ️ Using default parameters")
-        
-        with st.expander("🔧 Advanced Parameter Controls", expanded=False):
-            self._render_parameter_controls()
-        
         # Re-analysis controls
         st.write("---")
         col1, col2 = st.columns(2)
@@ -1281,9 +800,10 @@ class MainInterface:
             # Re-analysis button
             if st.button("🔄 Re-analyze with Current Settings", type="primary", use_container_width=True):
                 if st.session_state.current_pdb:
-                    if st.session_state.interaction_filters:
+                    selected_interactions = [itype for itype, selected in st.session_state.selected_interactions.items() if selected]
+                    if selected_interactions:
                         with st.spinner("Re-analyzing with new parameters..."):
-                            self._run_single_analysis(st.session_state.current_pdb, st.session_state.interaction_filters)
+                            self._run_single_analysis(st.session_state.current_pdb, selected_interactions)
                         st.success("✅ Re-analysis complete!")
                     else:
                         st.error("❌ Please select at least one interaction type")
@@ -1577,7 +1097,7 @@ class MainInterface:
                 })
                 st.rerun()
 
-    def _identify_hotspots(self, all_interactions: Dict[str, List[Dict]], selected_interactions: List[str]) -> List[Dict[str, Any]]:
+    def _identify_hotspots(self, all_interactions: Dict[str, List[Any]], selected_interactions: List[str]) -> List[Dict[str, Any]]:
         """Identify interaction hotspots from a given set of interactions."""
         residue_counts = {}
         
@@ -1588,8 +1108,8 @@ class MainInterface:
                 continue
             
             for interaction in interactions:
-                res1_id = f"{interaction.get('residue1', '')}{interaction.get('chain1', '')}"
-                res2_id = f"{interaction.get('residue2', '')}{interaction.get('chain2', '')}"
+                res1_id = f"{self._get_interaction_property(interaction, 'residue1', '')}{self._get_interaction_property(interaction, 'chain1', '')}"
+                res2_id = f"{self._get_interaction_property(interaction, 'residue2', '')}{self._get_interaction_property(interaction, 'chain2', '')}"
                 
                 if res1_id:
                     residue_counts[res1_id] = residue_counts.get(res1_id, 0) + 1
@@ -1684,14 +1204,14 @@ class MainInterface:
             summary_lines.append(f"#### {display_name} ({len(interactions)} found)\n")
 
             # Stats
-            distances = [i['distance'] for i in interactions if 'distance' in i]
+            distances = [self._get_interaction_property(i, 'distance', 0) for i in interactions if self._get_interaction_property(i, 'distance') is not None]
             if distances:
                 avg_dist = np.mean(distances)
                 min_dist = min(distances)
                 max_dist = max(distances)
                 summary_lines.append(f"- **Statistics**: Average distance of **{avg_dist:.2f} Å** (range: {min_dist:.2f} - {max_dist:.2f} Å).")
 
-            strengths = [i.get('strength', 'unknown').capitalize() for i in interactions]
+            strengths = [self._get_interaction_property(i, 'strength', 'unknown').capitalize() for i in interactions]
             if strengths:
                 strength_counts = pd.Series(strengths).value_counts().to_dict()
                 strength_str = ", ".join([f"**{count}** {name}" for name, count in strength_counts.items()])
@@ -1746,13 +1266,6 @@ class MainInterface:
         
         st.header(f"📊 Visualization - {st.session_state.current_pdb}")
         
-        # Show current strength filter
-        strength_names = {
-            'strong': 'Strong only',
-            'strong_moderate': 'Strong & Moderate',
-            'all': 'All (Strong, Moderate, Weak)'
-        }
-        
         # Show active individual filters summary
         active_filters = {itype: filter_val for itype, filter_val in st.session_state.individual_strength_filters.items() if filter_val != 'all'}
         if active_filters:
@@ -1763,6 +1276,11 @@ class MainInterface:
                     filter_groups[filter_val] = []
                 filter_groups[filter_val].append(get_interaction_display_names()[itype])
             
+            strength_names = {
+                'strong': 'Strong only',
+                'strong_moderate': 'Strong & Moderate',
+                'all': 'All (Strong, Moderate, Weak)'
+            }
             for filter_val, types in filter_groups.items():
                 st.caption(f"**{strength_names.get(filter_val)}**: {', '.join(types)}")
         
@@ -1784,7 +1302,7 @@ class MainInterface:
         self.structure_viewer.render_structure(
             st.session_state.current_pdb,
             filtered_result,
-            st.session_state.interaction_filters
+            [itype for itype, selected in st.session_state.selected_interactions.items() if selected]
         )
         
         # Interaction plots
@@ -1834,7 +1352,7 @@ class MainInterface:
                 }
                 st.caption(f"**{strength_names.get(filter_val)}**: {', '.join(types)}")
         else:
-            st.info("🔍 Showing all interaction strengths for all types. Use the 'Analysis' tab to configure filters.")
+            st.info("🔍 Showing all interaction strengths for all types. Use the sidebar to configure filters.")
         
         # Results for current structure
         if st.session_state.current_pdb:
@@ -1994,7 +1512,7 @@ class MainInterface:
                     5. Click **Deploy**
                     
                     Your app will be live at: `https://your-app-name.streamlit.app`
-                    """)
+                    """, unsafe_allow_html=True)
                     st.info("💡 Make sure your repository is public for free deployment!")
                 
                 st.markdown("[📖 Streamlit Cloud Docs](https://docs.streamlit.io/streamlit-cloud)")
@@ -2018,7 +1536,7 @@ class MainInterface:
                     **Files needed:**
                     - `Procfile`: `web: streamlit run server.py --server.port $PORT`
                     - `requirements.txt`: Your dependencies
-                    """)
+                    """, unsafe_allow_html=True)
                 
                 st.markdown("[📖 Heroku Deployment Guide](https://devcenter.heroku.com/articles/getting-started-with-python)")
             
@@ -2043,7 +1561,7 @@ class MainInterface:
                     - AWS, Google Cloud, Azure
                     - DigitalOcean, Railway
                     - Your own server
-                    """)
+                    """, unsafe_allow_html=True)
                 
                 st.markdown("[📖 Docker Deployment](https://docs.docker.com/get-started/)")
         
@@ -2198,10 +1716,12 @@ class MainInterface:
         interactions_data = []
 
         all_interactions = result.get('interactions', {})
+        selected_interactions = [itype for itype, selected in st.session_state.selected_interactions.items() if selected]
+
         for interaction_type, interactions in all_interactions.items():
             resolved_key = self._resolve_filter_key(interaction_type)
 
-            if resolved_key in st.session_state.interaction_filters:
+            if resolved_key in selected_interactions:
                 # Apply individual strength filtering for this interaction type
                 strength_filter = st.session_state.individual_strength_filters.get(resolved_key, 'all')
                 filtered_interactions = self._filter_interactions_by_strength(
@@ -2214,56 +1734,87 @@ class MainInterface:
                     
                     interactions_data.append({
                         "Type": get_interaction_display_names().get(resolved_key, resolved_key.title()),
-                        "Residue 1": f"{interaction.get('residue1', '')} {interaction.get('chain1', '')}",
-                        "Residue 2": f"{interaction.get('residue2', '')} {interaction.get('chain2', '')}",
-                        "Distance (Å)": f"{interaction.get('distance', 0):.2f}",
+                        "Residue 1": f"{self._get_interaction_property(interaction, 'residue1', '')} {self._get_interaction_property(interaction, 'chain1', '')}",
+                        "Residue 2": f"{self._get_interaction_property(interaction, 'residue2', '')} {self._get_interaction_property(interaction, 'chain2', '')}",
+                        "Distance (Å)": f"{self._get_interaction_property(interaction, 'distance', 0):.2f}",
                         "Angle (°)": angle_info,
-                        "Strength": interaction.get('strength', 'Moderate')
+                        "Strength": self._get_interaction_property(interaction, 'strength', 'Moderate')
                     })
         
         return pd.DataFrame(interactions_data)
     
-    def _get_angle_display(self, interaction: Dict[str, Any], interaction_type: str) -> str:
+    def _get_interaction_property(self, interaction: Any, property_name: str, default: Any = None) -> Any:
+        """Safely get a property from an interaction object or dictionary."""
+        if isinstance(interaction, dict):
+            return interaction.get(property_name, default)
+        
+        # Handle different field naming conventions for different interaction types
+        if property_name == 'residue1':
+            # Try different field names based on interaction type
+            for field_name in ['donor_residue', 'halogen_residue', 'chalcogen_residue', 'pnictogen_residue', 
+                             'tetrel_residue', 'cation_residue', 'anion_residue', 'residue1']:
+                if hasattr(interaction, field_name):
+                    return getattr(interaction, field_name, default)
+        elif property_name == 'residue2':
+            for field_name in ['acceptor_residue', 'residue2']:
+                if hasattr(interaction, field_name):
+                    return getattr(interaction, field_name, default)
+        elif property_name == 'chain1':
+            for field_name in ['donor_chain', 'halogen_chain', 'chalcogen_chain', 'pnictogen_chain',
+                             'tetrel_chain', 'cation_chain', 'anion_chain', 'chain1']:
+                if hasattr(interaction, field_name):
+                    return getattr(interaction, field_name, default)
+        elif property_name == 'chain2':
+            for field_name in ['acceptor_chain', 'chain2']:
+                if hasattr(interaction, field_name):
+                    return getattr(interaction, field_name, default)
+        else:
+            # For other properties, try the direct name first
+            return getattr(interaction, property_name, default)
+        
+        return default
+
+    def _get_angle_display(self, interaction: Any, interaction_type: str) -> str:
         """Get formatted angle display for different interaction types."""
         if interaction_type in ['chalcogenbond', 'chalcogen_bond']:
             # Chalcogen bonds have theta and delta angles
-            theta = interaction.get('theta_angle')
-            delta = interaction.get('delta_angle')
+            theta = self._get_interaction_property(interaction, 'theta_angle')
+            delta = self._get_interaction_property(interaction, 'delta_angle')
             if theta is not None and delta is not None:
                 return f"θ:{theta:.1f}° δ:{delta:.1f}°"
             elif theta is not None:
                 return f"θ:{theta:.1f}°"
-        
+
         elif interaction_type in ['halogen_bond', 'halogenbond']:
             # Halogen bonds have C-X...A angle
-            angle = interaction.get('angle')
+            angle = self._get_interaction_property(interaction, 'angle')
             if angle is not None:
                 return f"{angle:.1f}°"
-        
+
         elif interaction_type in ['tetrel_bond', 'tetrelbond']:
             # Tetrel bonds have theta1 and theta2 angles
-            theta1 = interaction.get('theta1_angle')
-            theta2 = interaction.get('theta2_angle')
+            theta1 = self._get_interaction_property(interaction, 'theta1_angle')
+            theta2 = self._get_interaction_property(interaction, 'theta2_angle')
             if theta1 is not None and theta2 is not None:
                 return f"θ₁:{theta1:.1f}° θ₂:{theta2:.1f}°"
-        
+
         elif interaction_type in ['n_pi_star', 'npistar']:
             # n→π* interactions have Bürgi-Dunitz angle
-            angle = interaction.get('angle')
+            angle = self._get_interaction_property(interaction, 'angle')
             if angle is not None:
                 return f"BD:{angle:.1f}°"
-        
+
         elif interaction_type in ['hydrogen_bond', 'hbond', 'hydrogenbond']:
             # Hydrogen bonds have D-H...A angle
-            angle = interaction.get('angle')
+            angle = self._get_interaction_property(interaction, 'angle')
             if angle is not None:
                 return f"DHA:{angle:.1f}°"
-        
+
         # Generic fallback for other interaction types
-        angle = interaction.get('angle')
+        angle = self._get_interaction_property(interaction, 'angle')
         if angle is not None:
             return f"{angle:.1f}°"
-        
+
         return "N/A"
     
     def _render_session_summary(self):
@@ -2303,20 +1854,20 @@ class MainInterface:
         # Fallback to original key, which will likely fail to find a filter and use 'all'
         return itype
 
-    def _filter_interactions_by_strength(self, interactions: List[Dict[str, Any]], strength_filter: str) -> List[Dict[str, Any]]:
+    def _filter_interactions_by_strength(self, interactions: List[Any], strength_filter: str) -> List[Any]:
         """
         Filter interactions by strength level.
-        
+
         Args:
-            interactions: List of interaction dictionaries
+            interactions: List of interaction objects or dictionaries
             strength_filter: 'strong', 'strong_moderate', or 'all'
-        
+
         Returns:
             Filtered list of interactions
         """
         if strength_filter == 'all':
             return interactions
-        
+
         # Define which strength levels to include
         if strength_filter == 'strong':
             allowed_strengths = ['strong']
@@ -2324,12 +1875,12 @@ class MainInterface:
             allowed_strengths = ['strong', 'moderate']
         else:
             return interactions  # Default to all if unknown filter
-        
+
         # Filter interactions
         filtered = []
         for interaction in interactions:
-            strength = interaction.get('strength', '').lower()
-            
+            strength = self._get_interaction_property(interaction, 'strength', '').lower()
+
             # Handle different strength naming conventions
             if strength in allowed_strengths:
                 filtered.append(interaction)
@@ -2338,16 +1889,16 @@ class MainInterface:
                 filtered.append(interaction)
             elif strength == 'very_strong' and 'strong' in allowed_strengths:
                 filtered.append(interaction)
-        
+
         return filtered
 
-    def _apply_individual_strength_filters(self, all_interactions: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _apply_individual_strength_filters(self, all_interactions: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
         """
         Apply individual strength filters to each interaction type.
-        
+
         Args:
             all_interactions: Dictionary mapping interaction types to lists of interactions
-        
+
         Returns:
             Dictionary with filtered interactions for each type
         """

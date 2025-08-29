@@ -1,3 +1,19 @@
+from typing import Any, List, Dict
+
+def _get_interaction_property(interaction: Any, property_name: str, default_value: Any = None) -> Any:
+    """
+    Get a property from an interaction object, handling both dictionary and object styles.
+    """
+    if hasattr(interaction, property_name):
+        # Object-style interaction (e.g., HydrogenBond dataclass)
+        return getattr(interaction, property_name, default_value)
+    elif isinstance(interaction, dict):
+        # Dictionary-style interaction
+        return interaction.get(property_name, default_value)
+    else:
+        # Unknown format, return default
+        return default_value
+
 def _create_main_viewer(self, pdb_id: str, pdb_data: str, interaction_lines: List[Dict[str, Any]]) -> str:
     """Create a simple, working main viewer HTML."""
     # Ensure we have PDB data
@@ -8,7 +24,7 @@ def _create_main_viewer(self, pdb_id: str, pdb_data: str, interaction_lines: Lis
         return f'<div style="color: red; padding: 20px;">❌ Failed to load PDB data for {pdb_id}</div>'
     
     # Set up default values
-    interaction_visibility = {interaction.get('type', 'unknown'): True for interaction in interaction_lines}
+    interaction_visibility = {_get_interaction_property(interaction, 'type', 'unknown'): True for interaction in interaction_lines}
     
     # Escape PDB data for JavaScript
     pdb_data_escaped = pdb_data.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '')

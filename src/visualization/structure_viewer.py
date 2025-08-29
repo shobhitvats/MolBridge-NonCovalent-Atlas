@@ -21,6 +21,28 @@ class StructureViewer:
         self.viewer_config = config.visualization
         self.pdb_handler = PDBHandler(config)
     
+    def _get_interaction_property(self, interaction: Any, property_name: str, default_value: Any = None) -> Any:
+        """
+        Get a property from an interaction object, handling both dictionary and object styles.
+        
+        Args:
+            interaction: The interaction object (dict or dataclass)
+            property_name: Name of the property to retrieve
+            default_value: Default value if property is not found
+            
+        Returns:
+            The property value or default_value
+        """
+        if hasattr(interaction, property_name):
+            # Object-style interaction (e.g., HydrogenBond dataclass)
+            return getattr(interaction, property_name, default_value)
+        elif isinstance(interaction, dict):
+            # Dictionary-style interaction
+            return interaction.get(property_name, default_value)
+        else:
+            # Unknown format, return default
+            return default_value
+    
     def render_structure(self, 
                         pdb_id: str,
                         analysis_result: Dict[str, Any],
@@ -130,11 +152,24 @@ class StructureViewer:
         for interaction_type, interaction_list in interactions.items():
             if interaction_visibility.get(interaction_type, True) and interaction_list:
                 for interaction in interaction_list:
+                    # Convert interaction object to dictionary if it's not already
+                    if hasattr(interaction, '__dict__'):
+                        # Convert object to dictionary
+                        interaction_dict = vars(interaction)
+                    elif isinstance(interaction, dict):
+                        interaction_dict = interaction
+                    else:
+                        # Fallback: try to convert to dict or skip
+                        try:
+                            interaction_dict = dict(interaction)
+                        except (TypeError, ValueError):
+                            continue
+                    
                     # Convert all numpy types to Python native types for JSON serialization
                     interaction_item = {}
                     
                     # Safely convert all values to JSON-serializable types
-                    for key, value in interaction.items():
+                    for key, value in interaction_dict.items():
                         if hasattr(value, 'item'):  # numpy scalar
                             interaction_item[key] = value.item()
                         elif isinstance(value, (int, str, bool, type(None))):
@@ -879,10 +914,10 @@ class StructureViewer:
             
             for interaction in interaction_list:
                 # Extract residue information for coordinate lookup
-                residue1 = interaction.get('residue1', '')
-                residue2 = interaction.get('residue2', '')
-                chain1 = interaction.get('chain1', '')
-                chain2 = interaction.get('chain2', '')
+                residue1 = self._get_interaction_property(interaction, 'residue1', '')
+                residue2 = self._get_interaction_property(interaction, 'residue2', '')
+                chain1 = self._get_interaction_property(interaction, 'chain1', '')
+                chain2 = self._get_interaction_property(interaction, 'chain2', '')
                 
                 # Create line data with residue info for coordinate extraction in JS
                 line_data = {
@@ -892,8 +927,8 @@ class StructureViewer:
                     'residue2': residue2,
                     'chain1': chain1,
                     'chain2': chain2,
-                    'distance': interaction.get('distance', 0),
-                    'strength': interaction.get('strength', 'moderate'),
+                    'distance': self._get_interaction_property(interaction, 'distance', 0),
+                    'strength': self._get_interaction_property(interaction, 'strength', 'moderate'),
                     'label': f"{interaction_type}: {residue1}({chain1}) - {residue2}({chain2})"
                 }
                 lines.append(line_data)
@@ -923,7 +958,7 @@ class StructureViewer:
         # Filter interactions based on visibility settings
         filtered_interactions = []
         for interaction in interaction_lines:
-            interaction_type = interaction.get('type', '')
+            interaction_type = self._get_interaction_property(interaction, 'type', '')
             if interaction_visibility.get(interaction_type, True):
                 filtered_interactions.append(interaction)
         
@@ -1275,10 +1310,10 @@ view
             color = self.viewer_config.interaction_colors.get(interaction_type, "yellow")
             
             for i, interaction in enumerate(interactions[interaction_type]):
-                res1 = interaction.get('residue1', '')
-                res2 = interaction.get('residue2', '')
-                chain1 = interaction.get('chain1', '')
-                chain2 = interaction.get('chain2', '')
+                res1 = self._get_interaction_property(interaction, 'residue1', '')
+                res2 = self._get_interaction_property(interaction, 'residue2', '')
+                chain1 = self._get_interaction_property(interaction, 'chain1', '')
+                chain2 = self._get_interaction_property(interaction, 'chain2', '')
                 
                 obj_name = f"{interaction_type}_{i}"
                 
@@ -1302,10 +1337,10 @@ view
             color = self.viewer_config.interaction_colors.get(interaction_type, "yellow")
             
             for interaction in interactions[interaction_type]:
-                res1 = interaction.get('residue1', '')
-                res2 = interaction.get('residue2', '')
-                chain1 = interaction.get('chain1', '')
-                chain2 = interaction.get('chain2', '')
+                res1 = self._get_interaction_property(interaction, 'residue1', '')
+                res2 = self._get_interaction_property(interaction, 'residue2', '')
+                chain1 = self._get_interaction_property(interaction, 'chain1', '')
+                chain2 = self._get_interaction_property(interaction, 'chain2', '')
                 
                 commands.append(f"distance /{chain1}:{res1} /{chain2}:{res2}")
                 commands.append(f"color {color} distances")

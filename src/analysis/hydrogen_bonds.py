@@ -179,6 +179,10 @@ class HydrogenBondDetector:
                             donor_atom = residue[atom_name]
                             hydrogen_atoms = self._find_hydrogen_atoms(residue, atom_name)
                             
+                            # Ensure hydrogen_atoms is always a list
+                            if not isinstance(hydrogen_atoms, list):
+                                hydrogen_atoms = [hydrogen_atoms] if hydrogen_atoms else []
+                            
                             donors.append({
                                 'atom': donor_atom,
                                 'hydrogen_atoms': hydrogen_atoms,
@@ -192,6 +196,10 @@ class HydrogenBondDetector:
                 if 'N' in residue:
                     donor_atom = residue['N']
                     hydrogen_atoms = self._find_hydrogen_atoms(residue, 'N')
+                    
+                    # Ensure hydrogen_atoms is always a list
+                    if not isinstance(hydrogen_atoms, list):
+                        hydrogen_atoms = [hydrogen_atoms] if hydrogen_atoms else []
                     
                     donors.append({
                         'atom': donor_atom,
@@ -250,7 +258,12 @@ class HydrogenBondDetector:
         if heavy_atom_name in self.hydrogen_patterns:
             for h_name in self.hydrogen_patterns[heavy_atom_name]:
                 if h_name in residue:
-                    hydrogen_atoms.append(residue[h_name])
+                    atom = residue[h_name]
+                    # Ensure it's actually an Atom object
+                    if hasattr(atom, 'get_name') and hasattr(atom, 'get_coord'):
+                        hydrogen_atoms.append(atom)
+                    else:
+                        logger.warning(f"Invalid atom object for {h_name}: {type(atom)}")
         
         return hydrogen_atoms
     
@@ -276,7 +289,14 @@ class HydrogenBondDetector:
         best_hydrogen = None
         best_angle = 0
         
-        for hydrogen_atom in donor_info['hydrogen_atoms']:
+        # Ensure hydrogen_atoms is a list
+        hydrogen_atoms = donor_info.get('hydrogen_atoms', [])
+        if not isinstance(hydrogen_atoms, list):
+            hydrogen_atoms = [hydrogen_atoms] if hydrogen_atoms else []
+        
+        for hydrogen_atom in hydrogen_atoms:
+            if hydrogen_atom is None:
+                continue
             angle = self._calculate_angle(donor_atom, hydrogen_atom, acceptor_atom)
             if angle > best_angle:
                 best_angle = angle
@@ -353,3 +373,35 @@ class HydrogenBondDetector:
             return 'moderate'
         else:
             return 'weak'
+    
+    def to_dict_list(self, hydrogen_bonds: List[HydrogenBond]) -> List[Dict[str, Any]]:
+        """Convert hydrogen bonds to list of dictionaries."""
+        result = []
+        for hbond in hydrogen_bonds:
+            try:
+                # Check if hbond is actually a HydrogenBond object
+                if not hasattr(hbond, 'donor_atom'):
+                    logger.error(f"Invalid hydrogen bond object: {type(hbond)} - {hbond}")
+                    continue
+                    
+                result.append({
+                    'donor_atom': hbond.donor_atom.get_name() if hasattr(hbond.donor_atom, 'get_name') else str(hbond.donor_atom),
+                    'acceptor_atom': hbond.acceptor_atom.get_name() if hasattr(hbond.acceptor_atom, 'get_name') else str(hbond.acceptor_atom),
+                    'hydrogen_atom': hbond.hydrogen_atom.get_name() if hbond.hydrogen_atom and hasattr(hbond.hydrogen_atom, 'get_name') else None,
+                    'distance': round(hbond.distance, 3),
+                    'angle': round(hbond.angle, 1),
+                    'strength': hbond.strength,
+                    'donor_residue': hbond.donor_residue,
+                    'acceptor_residue': hbond.acceptor_residue,
+                    'donor_chain': hbond.donor_chain,
+                    'acceptor_chain': hbond.acceptor_chain,
+                    'residue1': hbond.donor_residue,
+                    'residue2': hbond.acceptor_residue,
+                    'chain1': hbond.donor_chain,
+                    'chain2': hbond.acceptor_chain
+                })
+            except Exception as e:
+                logger.error(f"Error converting hydrogen bond to dict: {e} - Object: {hbond}")
+                continue
+                
+        return result

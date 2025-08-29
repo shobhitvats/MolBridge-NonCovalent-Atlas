@@ -122,12 +122,24 @@ class HalogenBondDetector:
                     atom_name = atom.get_name()
                     element = atom.get_element() if hasattr(atom, 'get_element') else atom_name[0]
                     
-                    # Check if atom is a halogen
+                    # Check if atom is a halogen - be more flexible with naming
                     halogen_type = None
                     for hal_type, hal_names in self.halogen_atoms.items():
-                        if element == hal_type or atom_name in hal_names:
+                        if element.upper() == hal_type or atom_name.upper() in [name.upper() for name in hal_names] or atom_name.upper().startswith(hal_type):
                             halogen_type = hal_type
                             break
+                    
+                    # Also check for common halogen atom naming patterns
+                    if not halogen_type:
+                        if atom_name.upper() in ['CL', 'BR', 'I', 'F'] or element.upper() in ['CL', 'BR', 'I', 'F']:
+                            if element.upper() == 'CL' or atom_name.upper().startswith('CL'):
+                                halogen_type = 'CL'
+                            elif element.upper() == 'BR' or atom_name.upper().startswith('BR'):
+                                halogen_type = 'BR'
+                            elif element.upper() == 'I' or atom_name.upper().startswith('I'):
+                                halogen_type = 'I'
+                            elif element.upper() == 'F' or atom_name.upper().startswith('F'):
+                                halogen_type = 'F'  # Include fluorine for completeness
                     
                     if halogen_type:
                         # Find the carbon atom bonded to halogen for angle calculation
@@ -171,7 +183,7 @@ class HalogenBondDetector:
             for residue in chain:
                 resname = residue.get_resname()
                 res_id = residue.get_id()
-                is_standard_aa = resname in self.acceptors
+                is_standard_aa = resname in self.acceptor_atoms
                 
                 for atom in residue:
                     atom_name = atom.get_name()
@@ -180,8 +192,8 @@ class HalogenBondDetector:
                     # Check if atom is a potential acceptor
                     is_acceptor = False
                     
-                    if is_standard_aa and resname in self.acceptors:
-                        if atom_name in self.acceptors[resname]:
+                    if is_standard_aa and resname in self.acceptor_atoms:
+                        if atom_name in self.acceptor_atoms[resname]:
                             is_acceptor = True
                     
                     # Backbone oxygen

@@ -31,6 +31,28 @@ class ReportGenerator:
     def __init__(self, config: AppConfig):
         self.config = config
     
+    def _get_interaction_property(self, interaction: Any, property_name: str, default_value: Any = None) -> Any:
+        """
+        Safely get a property from an interaction object, whether it's a dictionary or an object with attributes.
+
+        Args:
+            interaction: The interaction object (dict or custom object)
+            property_name: Name of the property to retrieve
+            default_value: Default value if property is not found
+
+        Returns:
+            The property value or default_value
+        """
+        if hasattr(interaction, property_name):
+            # Object-style interaction (e.g., HydrogenBond dataclass)
+            return getattr(interaction, property_name, default_value)
+        elif isinstance(interaction, dict):
+            # Dictionary-style interaction
+            return interaction.get(property_name, default_value)
+        else:
+            # Unknown format, return default
+            return default_value
+    
     def generate_pdf_report(self,
                            pdb_ids: List[str],
                            analysis_results: Dict[str, Dict[str, Any]],
@@ -307,7 +329,7 @@ class ReportGenerator:
                     display_name = self._get_interaction_display_name(int_type)
                     count = len(int_list)
                     
-                    distances = [i.get('distance', 0) for i in int_list if 'distance' in i]
+                    distances = [self._get_interaction_property(i, 'distance', 0) for i in int_list if self._get_interaction_property(i, 'distance', None) is not None]
                     avg_distance = sum(distances) / len(distances) if distances else 'N/A'
                     avg_distance_str = f"{avg_distance:.2f}" if isinstance(avg_distance, float) else avg_distance
                     
@@ -423,15 +445,15 @@ class ReportGenerator:
                 interaction_data = {
                     'PDB_ID': pdb_id,
                     'Interaction_Type': self._get_interaction_display_name(interaction_type),
-                    'Residue_1': interaction.get('residue1', ''),
-                    'Chain_1': interaction.get('chain1', ''),
-                    'Residue_2': interaction.get('residue2', ''),
-                    'Chain_2': interaction.get('chain2', ''),
-                    'Distance_A': interaction.get('distance', ''),
-                    'Angle_deg': interaction.get('angle', ''),
-                    'Strength': interaction.get('strength', ''),
-                    'Atom_1': interaction.get('atom1', ''),
-                    'Atom_2': interaction.get('atom2', '')
+                    'Residue_1': self._get_interaction_property(interaction, 'residue1', ''),
+                    'Chain_1': self._get_interaction_property(interaction, 'chain1', ''),
+                    'Residue_2': self._get_interaction_property(interaction, 'residue2', ''),
+                    'Chain_2': self._get_interaction_property(interaction, 'chain2', ''),
+                    'Distance_A': self._get_interaction_property(interaction, 'distance', ''),
+                    'Angle_deg': self._get_interaction_property(interaction, 'angle', ''),
+                    'Strength': self._get_interaction_property(interaction, 'strength', ''),
+                    'Atom_1': self._get_interaction_property(interaction, 'atom1', ''),
+                    'Atom_2': self._get_interaction_property(interaction, 'atom2', '')
                 }
                 all_interactions.append(interaction_data)
         

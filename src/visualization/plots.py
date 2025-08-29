@@ -21,6 +21,28 @@ class InteractionPlots:
         self.config = config
         self.color_palette = list(config.visualization.interaction_colors.values())
     
+    def _get_interaction_property(self, interaction: Any, property_name: str, default_value: Any = None) -> Any:
+        """
+        Get a property from an interaction object, handling both dictionary and object styles.
+        
+        Args:
+            interaction: The interaction object (dict or dataclass)
+            property_name: Name of the property to retrieve
+            default_value: Default value if property is not found
+            
+        Returns:
+            The property value or default_value
+        """
+        if hasattr(interaction, property_name):
+            # Object-style interaction (e.g., HydrogenBond dataclass)
+            return getattr(interaction, property_name, default_value)
+        elif isinstance(interaction, dict):
+            # Dictionary-style interaction
+            return interaction.get(property_name, default_value)
+        else:
+            # Unknown format, return default
+            return default_value
+    
     def render_chain_heatmap(self, analysis_result: Dict[str, Any]):
         """Render chain-vs-chain interaction heatmap."""
         st.subheader("🔥 Chain Interaction Heatmap")
@@ -65,8 +87,8 @@ class InteractionPlots:
         
         for interaction_type, interaction_list in interactions.items():
             for interaction in interaction_list:
-                chain1 = interaction.get('chain1', '')
-                chain2 = interaction.get('chain2', '')
+                chain1 = self._get_interaction_property(interaction, 'chain1', '')
+                chain2 = self._get_interaction_property(interaction, 'chain2', '')
                 
                 if chain1 and chain2 and chain1 != chain2:
                     chains.add(chain1)
@@ -177,10 +199,10 @@ class InteractionPlots:
         
         for interaction_type, interaction_list in interactions.items():
             for interaction in interaction_list:
-                if 'distance' in interaction:
+                if self._get_interaction_property(interaction, 'distance', None) is not None:
                     distance_data.append({
                         'Interaction Type': self._get_display_name(interaction_type),
-                        'Distance (Å)': interaction['distance']
+                        'Distance (Å)': self._get_interaction_property(interaction, 'distance', 0)
                     })
         
         if not distance_data:
