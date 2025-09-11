@@ -136,38 +136,76 @@ class MainInterface:
                         label_visibility="collapsed"
                     )
 
+
     def render(self):
-        """Render the main interface."""
+        """Render the main interface with enhanced features."""
+        # Accessibility & Theming
+        with st.sidebar:
+            theme = st.radio("Theme:", ["Light", "Dark"], index=0, help="Switch between light and dark mode for accessibility.")
+            st.session_state["theme"] = theme
+            st.markdown("<style>body { background-color: #222 if theme=='Dark' else '#fff'; color: #fff if theme=='Dark' else '#222'; }</style>", unsafe_allow_html=True)
+
         # Sidebar for navigation and settings
         self._render_sidebar()
-        
+
+        # In-app help/tutorial
+        with st.expander("🛈 Getting Started & Help", expanded=False):
+            st.markdown("""
+            **Welcome to the Protein Interaction Explorer!**
+            - Use the sidebar to upload or fetch PDB files, select interaction types, and adjust analysis parameters.
+            - Switch between tabs for analysis, visualization, results, reports, and settings.
+            - Hover over any control for tooltips and guidance.
+            - Use the 'Bookmarks & Notes' section to annotate findings.
+            - For more help, see the ℹ️ Info tab.
+            """)
+
         # Main content area
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "🔍 Analysis", 
             "📊 Visualization", 
             "📋 Results", 
             "📄 Reports",
+            "🔄 Batch Comparison",
             "⚙️ Settings",
             "ℹ️ Info"
         ])
-        
+
         with tab1:
             self._render_analysis_tab()
-        
+
         with tab2:
             self._render_visualization_tab()
-        
+
         with tab3:
             self._render_results_tab()
-        
+
         with tab4:
             self._render_reports_tab()
-        
+
         with tab5:
-            self._render_settings_tab()
+            self._render_batch_comparison_tab()
 
         with tab6:
+            self._render_settings_tab()
+
+        with tab7:
             self._render_info_tab()
+
+    def _render_batch_comparison_tab(self):
+        """Render batch comparison and advanced visualizations."""
+        st.header("🔄 Batch Comparative Analysis")
+        if len(st.session_state.analysis_results) < 2:
+            st.info("Run a batch analysis to compare multiple structures.")
+            return
+        # Use the comparative analysis from plots
+        self.plots.render_comparative_analysis(st.session_state.analysis_results)
+        # Advanced: show interaction network for each structure
+        st.write("---")
+        st.subheader("🕸️ Interaction Networks (per structure)")
+        for pdb_id, result in st.session_state.analysis_results.items():
+            with st.expander(f"Network: {pdb_id}", expanded=False):
+                self.plots.render_interaction_network(result)
+
 
     def _render_info_tab(self):
         """Render the info tab with interaction criteria."""
@@ -1258,14 +1296,18 @@ class MainInterface:
         else:
             st.warning("No interaction types selected. Please select interactions in the sidebar to see an analysis.")
 
+
     def _render_visualization_tab(self):
-        """Render the visualization tab."""
+        """Render the visualization tab with advanced controls and accessibility."""
         if not st.session_state.current_pdb:
             st.info("Select a structure from the Analysis tab to visualize")
             return
-        
+
         st.header(f"📊 Visualization - {st.session_state.current_pdb}")
-        
+
+        # Accessibility: ARIA label for main visualization
+        st.markdown('<div aria-label="Protein 3D Structure Visualization" tabindex="0"></div>', unsafe_allow_html=True)
+
         # Show active individual filters summary
         active_filters = {itype: filter_val for itype, filter_val in st.session_state.individual_strength_filters.items() if filter_val != 'all'}
         if active_filters:
@@ -1275,7 +1317,6 @@ class MainInterface:
                 if filter_val not in filter_groups:
                     filter_groups[filter_val] = []
                 filter_groups[filter_val].append(get_interaction_display_names()[itype])
-            
             strength_names = {
                 'strong': 'Strong only',
                 'strong_moderate': 'Strong & Moderate',
@@ -1283,57 +1324,56 @@ class MainInterface:
             }
             for filter_val, types in filter_groups.items():
                 st.caption(f"**{strength_names.get(filter_val)}**: {', '.join(types)}")
-        
-        # 3D Structure viewer
-        
+
+        # 3D Structure viewer with extra controls
         result = st.session_state.analysis_results[st.session_state.current_pdb]
-        
-        # Apply individual strength filtering to interactions
         if 'interactions' in result and result['interactions']:
             filtered_interactions = self._apply_individual_strength_filters(result['interactions'])
-            
-            # Create filtered result for visualization
             filtered_result = result.copy()
             filtered_result['interactions'] = filtered_interactions
         else:
             filtered_result = result
-        
-        # Render 3D viewer with filtered interactions
+
+        # Render 3D viewer with filtered interactions and extra info/links
         self.structure_viewer.render_structure(
             st.session_state.current_pdb,
             filtered_result,
             [itype for itype, selected in st.session_state.selected_interactions.items() if selected]
         )
-        
+
+        # External database links
+        pdb_id = st.session_state.current_pdb
+        st.markdown(f"[� View {pdb_id} on RCSB PDB](https://www.rcsb.org/structure/{pdb_id}) | [UniProt Search](https://www.uniprot.org/uniprot/?query={pdb_id}) | [Literature](https://pubmed.ncbi.nlm.nih.gov/?term={pdb_id})")
+
         # Interaction plots
         st.subheader("📈 Interaction Analysis Plots")
-        
-        # Create tabs for different plot types
-        tab1, tab2, tab3 = st.tabs(["🔥 Chain Heatmap", "📊 Distribution", "🔬 Ramachandran"])
-        
+        tab1, tab2, tab3, tab4 = st.tabs(["🔥 Chain Heatmap", "📊 Distribution", "🔬 Ramachandran", "🕸️ Network"])
         with tab1:
             st.subheader("Chain Interaction Heatmap")
             st.caption("Shows interactions between different protein chains")
             self.plots.render_chain_heatmap(filtered_result)
-        
         with tab2:
             st.subheader("Interaction Distribution")
             st.caption("Distribution of different interaction types")
             self.plots.render_interaction_distribution(filtered_result)
-        
         with tab3:
             st.subheader("Ramachandran Plot")
             st.caption("Protein backbone conformation analysis")
-            self.plots.render_ramachandran_plot(result)  # This doesn't depend on interactions
+            self.plots.render_ramachandran_plot(result)
+        with tab4:
+            st.subheader("Interaction Network")
+            self.plots.render_interaction_network(filtered_result)
+
     
+
     def _render_results_tab(self):
-        """Render the results summary tab."""
+        """Render the results summary tab with annotation and sharing features."""
         if not st.session_state.analysis_results:
             st.info("No analysis results available")
             return
-        
+
         st.header("📋 Analysis Results")
-        
+
         # Show active individual filters summary for context
         active_filters = {itype: filter_val for itype, filter_val in st.session_state.individual_strength_filters.items() if filter_val != 'all'}
         if active_filters:
@@ -1343,7 +1383,6 @@ class MainInterface:
                 if filter_val not in filter_groups:
                     filter_groups[filter_val] = []
                 filter_groups[filter_val].append(get_interaction_display_names()[itype])
-            
             for filter_val, types in filter_groups.items():
                 strength_names = {
                     'strong': 'Strong only',
@@ -1353,28 +1392,20 @@ class MainInterface:
                 st.caption(f"**{strength_names.get(filter_val)}**: {', '.join(types)}")
         else:
             st.info("🔍 Showing all interaction strengths for all types. Use the sidebar to configure filters.")
-        
+
         # Results for current structure
         if st.session_state.current_pdb:
             result = st.session_state.analysis_results[st.session_state.current_pdb]
-            
-            # Interaction summary table
             st.subheader(f"Interactions in {st.session_state.current_pdb}")
-            
             interactions_df = self._create_interactions_dataframe(result)
             if not interactions_df.empty:
-                # Show filtering impact
                 total_interactions = sum(len(interactions) for interactions in result.get('interactions', {}).values())
                 filtered_count = len(interactions_df)
-                
                 if active_filters:
                     st.metric("Filtered Interactions Shown", f"{filtered_count}", f"of {total_interactions} total")
-                
                 st.dataframe(interactions_df, use_container_width=True)
-                
-                # Export options
-                col1, col2, col3 = st.columns(3)
-                
+                # Export, copy, and share options
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     csv_data = interactions_df.to_csv(index=False)
                     st.download_button(
@@ -1383,7 +1414,6 @@ class MainInterface:
                         f"{st.session_state.current_pdb}_interactions.csv",
                         "text/csv"
                     )
-                
                 with col2:
                     excel_data = io.BytesIO()
                     interactions_df.to_excel(excel_data, index=False)
@@ -1393,9 +1423,14 @@ class MainInterface:
                         f"{st.session_state.current_pdb}_interactions.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+                with col3:
+                    st.code(csv_data, language="csv")
+                    st.caption("Copy CSV to clipboard for sharing.")
+                with col4:
+                    st.markdown(f"[🔗 Share this PDB on RCSB](https://www.rcsb.org/structure/{st.session_state.current_pdb})")
             else:
                 st.warning("No interactions found with current filters")
-        
+
         # Bookmarks and notes
         self._render_bookmarks_section()
     
