@@ -18,17 +18,19 @@ from ui.main_interface import MainInterface
 
 # Configure Streamlit page
 st.set_page_config(
-    page_title="Protein Interaction Explorer",
+    page_title="MolBridge: NonCovalent Atlas",
     page_icon="🧬",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
         'Get Help': 'https://github.com/shobhitvats/Protein-Interaction-Analysis-Server',
         'Report a bug': 'https://github.com/shobhitvats/Protein-Interaction-Analysis-Server/issues',
-        'About': """
-        # Protein Interaction Explorer
-        
-        A comprehensive tool for analyzing noncovalent interactions in protein structures.
+    'About': """
+    # MolBridge
+    ### NonCovalent Atlas
+
+    Charting the landscape of noncovalent interactions...    
+    A comprehensive tool for analyzing noncovalent interactions in protein structures.
         
         **Features:**
         - Batch analysis of PDB structures
@@ -93,8 +95,8 @@ def main():
     """, unsafe_allow_html=True)
     
     # App header
-    st.title("🧬 Protein Interaction Explorer")
-    st.markdown("*Comprehensive analysis of noncovalent interactions in protein structures*")
+    # st.title("🧬 Protein Interaction Explorer")
+    # st.markdown("*Comprehensive analysis of noncovalent interactions in protein structures*")
     
     # Render main interface
     st.session_state.main_interface.render()

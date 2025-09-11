@@ -138,20 +138,377 @@ class MainInterface:
 
 
     def render(self):
-        """Render the main interface with enhanced features."""
+        """Render the main interface with a modular, modern dashboard layout."""
         # Accessibility & Theming
         with st.sidebar:
-            theme = st.radio("Theme:", ["Light", "Dark"], index=0, help="Switch between light and dark mode for accessibility.")
+            theme = st.radio("Theme:", ["Dark", "Light"], index=0, help="Switch between dark and light mode for accessibility.")
             st.session_state["theme"] = theme
-            st.markdown("<style>body { background-color: #222 if theme=='Dark' else '#fff'; color: #fff if theme=='Dark' else '#222'; }</style>", unsafe_allow_html=True)
+            # Custom CSS for dark/light mode, default is dark
+            if theme == "Dark":
+                st.markdown("""
+                <style>
+                body, .stApp, .st-cq, .st-cv, .st-cw, .st-cx, .st-cy, .st-cz {
+                    background-color: #18191A !important;
+                    color: #F5F6FA !important;
+                }
+                .stButton>button, .stDownloadButton>button {
+                    background-color: #00B4D8 !important;
+                    color: #18191A !important;
+                    border-radius: 8px;
+                    font-weight: 600;
+                }
+                .stTabs [data-baseweb="tab"] {
+                    background: #242526 !important;
+                    color: #F5F6FA !important;
+                }
+                .modular-card {
+                    background: #22242a;
+                    border-radius: 18px;
+                    box-shadow: 0 4px 24px 0 #0003;
+                    padding: 2.5rem 2rem 2rem 2rem;
+                    margin-bottom: 2rem;
+                }
+                .hero-section {
+                    background: linear-gradient(90deg, #00B4D8 0%, #18191A 100%);
+                    border-radius: 18px;
+                    box-shadow: 0 4px 24px 0 #0003;
+                    padding: 2.5rem 2rem 2rem 2rem;
+                    margin-bottom: 2rem;
+                    color: #fff;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <style>
+                body, .stApp {
+                    background-color: #fff !important;
+                    color: #18191A !important;
+                }
+                .stButton>button, .stDownloadButton>button {
+                    background-color: #00B4D8 !important;
+                    color: #fff !important;
+                    border-radius: 8px;
+                    font-weight: 600;
+                }
+                .stTabs [data-baseweb="tab"] {
+                    background: #f5f6fa !important;
+                    color: #18191A !important;
+                }
+                .modular-card {
+                    background: #f5f6fa;
+                    border-radius: 18px;
+                    box-shadow: 0 4px 24px 0 #0001;
+                    padding: 2.5rem 2rem 2rem 2rem;
+                    margin-bottom: 2rem;
+                }
+                .hero-section {
+                    background: linear-gradient(90deg, #00B4D8 0%, #fff 100%);
+                    border-radius: 18px;
+                    box-shadow: 0 4px 24px 0 #0001;
+                    padding: 2.5rem 2rem 2rem 2rem;
+                    margin-bottom: 2rem;
+                    color: #18191A;
+                }
+                </style>
+                """, unsafe_allow_html=True)
 
         # Sidebar for navigation and settings
         self._render_sidebar()
 
+        # HERO SECTION (aesthetic, glassmorphic, animated, with advanced effects)
+        st.markdown(
+            '''<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;400&display=swap" rel="stylesheet">
+            <style>
+            body, .stApp {
+                font-family: 'Montserrat', sans-serif !important;
+                background: #18191A !important;
+            }
+            /* Animated protein background always behind everything */
+            .stApp::before {
+                content: "";
+                position: fixed;
+                top: 0; left: 0; width: 100vw; height: 100vh;
+                z-index: 0;
+                background: url('https://raw.githubusercontent.com/shobhitvats/protein-animated-bg/main/protein-bg-loop.gif') center center/cover no-repeat;
+                opacity: 0.18;
+                pointer-events: none;
+                animation: none;
+            }
+            /* Lilty glow following cursor */
+            .lilty-glow {
+                pointer-events: none;
+                position: fixed;
+                top: 0; left: 0;
+                width: 120px; height: 120px;
+                border-radius: 50%;
+                background: radial-gradient(circle, #00B4D8 0%, #48CAE4 60%, transparent 100%);
+                opacity: 0.18;
+                filter: blur(18px);
+                z-index: 9999;
+                transition: opacity 0.2s;
+                mix-blend-mode: lighten;
+            }
+            .glass-hero {
+                position: relative;
+                background: linear-gradient(135deg, rgba(24,25,26,0.85) 0%, rgba(0,180,216,0.10) 100%);
+                border-radius: 2.5rem;
+                box-shadow: 0 4px 16px 0 #00B4D850;
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                padding: 3.5rem 2.5rem 2.5rem 2.5rem;
+                margin-bottom: 2.5rem;
+                overflow: hidden;
+                animation: floatHero 3.5s cubic-bezier(.23,1.01,.32,1) 0.2s both;
+            }
+            .glass-hero .wave-bg {
+                position: absolute;
+                left: 0; right: 0; top: 0; height: 120px;
+                z-index: 0;
+                pointer-events: none;
+                animation: waveMove 8s linear infinite alternate;
+            }
+            .glass-hero-content {
+                position: relative;
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                gap: 2.5rem;
+            }
+            /* Hero title and subtitle styling */
+            .glass-title {
+                font-size: clamp(2.2rem, 4.5vw, 3.2rem);
+                font-weight: 800;
+                line-height: 1.1;
+                letter-spacing: 0.02em;
+                color: #F5F6FA;
+                text-shadow: 0 3px 14px rgba(0,180,216,0.45);
+            }
+            .glass-subtitle {
+                margin-top: 0.35rem;
+                font-size: clamp(1.0rem, 1.6vw, 1.25rem);
+                font-weight: 500;
+                color: #E2F3F9;
+                opacity: 0.95;
+            }
+            .glass-subtitle .nca-strong {
+                font-weight: 800;
+                color: #FFFFFF;
+            }
+            .glass-subtitle .subtitle-prefix {
+                font-weight: 800;
+                color: #FFFFFF;
+                display: inline;
+            }
+            .glass-subtitle .subtitle-main {
+                display: inline;
+            }
+            .glass-subtitle .subtitle-line2 {
+                display: block;
+                margin-top: 0.18rem;
+                opacity: 0.95;
+                font-size: 1.01em;
+                font-weight: 400;
+                letter-spacing: 0.01em;
+                margin-left: calc(1.1em * 2 + 13ch); /* visually aligns with the start of subtitle-main */
+                text-indent: 0;
+            }
+            .glass-logo {
+                width: 90px; height: 90px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #00B4D8 0%, #48CAE4 100%);
+                box-shadow: 0 2px 8px #00B4D850;
+                display: flex; align-items: center; justify-content: center;
+                backdrop-filter: blur(4px);
+                animation: pulseGlow 2.5s infinite alternate;
+            }
+            .glass-card {
+                background: rgba(36,37,38,0.88);
+                border-radius: 1.5rem;
+                box-shadow: 0 4px 16px 0 #00B4D850;
+                backdrop-filter: blur(14px);
+                -webkit-backdrop-filter: blur(14px);
+                padding: 2.5rem 2rem 2rem 2rem;
+                margin-bottom: 1.2rem;
+                border: 1.5px solid rgba(0,180,216,0.10);
+                animation: fadeInCard 1.2s cubic-bezier(.23,1.01,.32,1) both;
+                transition: box-shadow 0.3s, transform 0.2s;
+            }
+            .glass-card:last-child {
+                margin-bottom: 0 !important;
+            }
+            .glass-card:hover {
+                box-shadow: 0 8px 32px 0 #00B4D8aa;
+                transform: translateY(-4px) scale(1.01);
+            }
+            @keyframes fadeInUp {
+                0% { opacity: 0; transform: translateY(30px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes floatHero {
+                0% { transform: translateY(40px) scale(0.98); opacity: 0; }
+                100% { transform: translateY(0) scale(1); opacity: 1; }
+            }
+            @keyframes waveMove {
+                0% { transform: translateY(0); }
+                100% { transform: translateY(10px) scaleX(1.03); }
+            }
+            @keyframes pulseGlow {
+                0% { box-shadow: 0 2px 8px #00B4D850; }
+                100% { box-shadow: 0 4px 16px #00B4D8aa; }
+            }
+            .glass-card {
+                background: rgba(36,37,38,0.88);
+                border-radius: 1.5rem;
+                box-shadow: 0 4px 16px 0 #00B4D850;
+                backdrop-filter: blur(14px);
+                -webkit-backdrop-filter: blur(14px);
+                padding: 2.5rem 2rem 2rem 2rem;
+                margin-bottom: 2.5rem;
+                border: 1.5px solid rgba(0,180,216,0.10);
+                animation: fadeInCard 1.2s cubic-bezier(.23,1.01,.32,1) both;
+                transition: box-shadow 0.3s, transform 0.2s;
+            }
+            .glass-card:hover {
+                box-shadow: 0 8px 32px 0 #00B4D8aa;
+                transform: translateY(-4px) scale(1.01);
+            }
+            @keyframes fadeInCard {
+                0% { opacity: 0; transform: translateY(40px) scale(0.98); }
+                100% { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            .gradient-btn button, .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+                background: linear-gradient(90deg, #00B4D8 0%, #48CAE4 100%) !important;
+                color: #18191A !important;
+                border-radius: 12px !important;
+                font-weight: 800 !important;
+                font-size: 1.13rem !important;
+                box-shadow: 0 2px 8px #00B4D850;
+                border: none !important;
+                padding: 0.7rem 1.7rem !important;
+                margin: 0.2rem 0.2rem 0.2rem 0.2rem !important;
+                letter-spacing: 0.02em;
+                transition: background 0.3s, box-shadow 0.3s, transform 0.15s;
+                animation: floatBtn 2.2s cubic-bezier(.23,1.01,.32,1) 0.2s both;
+            }
+            .gradient-btn button:hover, .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {
+                background: linear-gradient(90deg, #48CAE4 0%, #00B4D8 100%) !important;
+                box-shadow: 0 4px 16px #00B4D8aa;
+                transform: translateY(-2px) scale(1.04);
+            }
+            @keyframes floatBtn {
+                0% { opacity: 0; transform: translateY(20px) scale(0.98); }
+                100% { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            .stTabs [data-baseweb="tab"] {
+                background: #23272b !important;
+                color: #F5F6FA !important;
+                border-radius: 12px 12px 0 0 !important;
+                margin-right: 2px;
+                box-shadow: 0 2px 8px #00B4D850;
+                transition: background 0.4s, color 0.4s, box-shadow 0.4s;
+                animation: fadeInTab 1.2s cubic-bezier(.23,1.01,.32,1) both;
+            }
+            .stTabs [data-baseweb="tab"][aria-selected="true"] {
+                background: #00B4D8 !important;
+                color: #18191A !important;
+                box-shadow: 0 4px 12px #00B4D8aa;
+            }
+            @keyframes fadeInTab {
+                0% { opacity: 0; transform: translateY(20px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+            .section-header {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #00B4D8;
+                margin-bottom: 1.2rem;
+                display: flex; align-items: center; gap: 0.7rem;
+                animation: fadeInUp 1.5s cubic-bezier(.23,1.01,.32,1) 0.3s both;
+                text-shadow: 0 2px 8px #00B4D8aa;
+            }
+            .section-header svg, .section-header img {
+                animation: iconPop 1.2s cubic-bezier(.23,1.01,.32,1) 0.5s both;
+            }
+            @keyframes iconPop {
+                0% { opacity: 0; transform: scale(0.7) rotate(-10deg); }
+                100% { opacity: 1; transform: scale(1) rotate(0deg); }
+            }
+            .stCheckbox>label>div:first-child, .stRadio>div>label {
+                transition: box-shadow 0.2s, border 0.2s, background 0.2s;
+            }
+            .stCheckbox>label>div:first-child:active, .stRadio>div>label:active {
+                box-shadow: 0 0 8px #00B4D8aa;
+                border: 1.5px solid #48CAE4 !important;
+            }
+            .stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>input, .stTextArea>div>textarea {
+                background: rgba(36,37,38,0.55) !important;
+                border-radius: 10px !important;
+                color: #F5F6FA !important;
+                border: 1.5px solid rgba(0,180,216,0.10) !important;
+                font-size: 1.08rem !important;
+                box-shadow: 0 1px 6px #00B4D830;
+                padding: 0.5rem 1rem !important;
+                transition: box-shadow 0.2s, border 0.2s;
+            }
+            .stSelectbox>div>div:focus, .stMultiSelect>div>div:focus, .stTextInput>div>input:focus, .stTextArea>div>textarea:focus {
+                border: 1.5px solid #00B4D8 !important;
+                box-shadow: 0 0 0 2px #00B4D880;
+            }
+            .section-divider {
+                height: 2px;
+                background: linear-gradient(90deg, #00B4D8 0%, #18191A 100%);
+                border: none;
+                margin: 2.5rem 0 2rem 0;
+                border-radius: 2px;
+                animation: fadeInDivider 1.2s cubic-bezier(.23,1.01,.32,1) 0.5s both;
+            }
+            @keyframes fadeInDivider {
+                0% { opacity: 0; width: 0; }
+                100% { opacity: 1; width: 100%; }
+            }
+            </style>
+            <div class="lilty-glow" id="lilty-glow"></div>
+            <script>
+            // Lilty glow follows cursor
+            document.addEventListener('mousemove', function(e) {
+                var glow = document.getElementById('lilty-glow');
+                if (glow) {
+                    glow.style.left = (e.clientX - 60) + 'px';
+                    glow.style.top = (e.clientY - 60) + 'px';
+                    glow.style.opacity = 0.18;
+                }
+            });
+            document.addEventListener('mouseleave', function() {
+                var glow = document.getElementById('lilty-glow');
+                if (glow) { glow.style.opacity = 0; }
+            });
+            </script>
+            <div class="glass-hero">
+                <div class="wave-bg">
+                    <svg width="100%" height="120" viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M0,80 C360,160 1080,0 1440,80 L1440,120 L0,120 Z" fill="#00B4D8" fill-opacity="0.18"/>
+                        <path d="M0,100 C400,0 1040,200 1440,100 L1440,120 L0,120 Z" fill="#00B4D8" fill-opacity="0.12"/>
+                    </svg>
+                </div>
+                <div class="glass-hero-content">
+                    <div class="glass-logo">
+                        <img src="https://img.icons8.com/color/96/000000/dna-helix.png" width="60" height="60" alt="Protein Logo"/>
+                    </div>
+                    <div>
+                        <div class="glass-title">MolBridge</div>
+                        <div class="glass-subtitle">
+                            <span class="subtitle-prefix">NonCovalent Atlas — </span><span class="subtitle-main">Charting the landscape of noncovalent interactions...</span><br>
+                            <span class="subtitle-line2">&nbsp;&nbsp;&nbsp;Advanced protein structure & interaction analysis</span>
+                        </div>
+                    </div>
+                </div>
+            </div>''', unsafe_allow_html=True)
+
         # In-app help/tutorial
         with st.expander("🛈 Getting Started & Help", expanded=False):
             st.markdown("""
-            **Welcome to the Protein Interaction Explorer!**
+            **Welcome to MolBridge — NonCovalent Atlas!**
             - Use the sidebar to upload or fetch PDB files, select interaction types, and adjust analysis parameters.
             - Switch between tabs for analysis, visualization, results, reports, and settings.
             - Hover over any control for tooltips and guidance.
@@ -159,7 +516,82 @@ class MainInterface:
             - For more help, see the ℹ️ Info tab.
             """)
 
-        # Main content area
+        # Main content area in glassmorphic cards with gradient buttons
+        st.markdown('''<style>
+        .glass-card {
+            background: rgba(36,37,38,0.82);
+            border-radius: 1.5rem;
+            box-shadow: 0 8px 32px 0 #00B4D880;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 2.5rem 2rem 2rem 2rem;
+            margin-bottom: 2.5rem;
+            border: 1.5px solid rgba(0,180,216,0.18);
+        }
+        .gradient-btn button, .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+            background: linear-gradient(90deg, #00B4D8 0%, #48CAE4 100%) !important;
+            color: #18191A !important;
+            border-radius: 12px !important;
+            font-weight: 800 !important;
+            font-size: 1.13rem !important;
+            box-shadow: 0 2px 12px #00B4D880;
+            border: none !important;
+            padding: 0.7rem 1.7rem !important;
+            margin: 0.2rem 0.2rem 0.2rem 0.2rem !important;
+            letter-spacing: 0.02em;
+            transition: background 0.3s, box-shadow 0.3s, transform 0.15s;
+        }
+        .gradient-btn button:hover, .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {
+            background: linear-gradient(90deg, #48CAE4 0%, #00B4D8 100%) !important;
+            box-shadow: 0 6px 24px #00B4D8cc;
+            transform: translateY(-2px) scale(1.04);
+        }
+        .stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>input, .stTextArea>div>textarea {
+            background: rgba(36,37,38,0.55) !important;
+            border-radius: 10px !important;
+            color: #F5F6FA !important;
+            border: 1.5px solid rgba(0,180,216,0.18) !important;
+            font-size: 1.08rem !important;
+            box-shadow: 0 1px 6px #00B4D830;
+            padding: 0.5rem 1rem !important;
+        }
+        .stSelectbox>div>div:focus, .stMultiSelect>div>div:focus, .stTextInput>div>input:focus, .stTextArea>div>textarea:focus {
+            border: 1.5px solid #00B4D8 !important;
+            box-shadow: 0 0 0 2px #00B4D880;
+        }
+        .stCheckbox>label>div:first-child {
+            border-radius: 6px !important;
+            border: 1.5px solid #00B4D8 !important;
+            background: rgba(0,180,216,0.12) !important;
+        }
+        .stRadio>div>label {
+            border-radius: 8px !important;
+            background: rgba(0,180,216,0.10) !important;
+            color: #F5F6FA !important;
+            padding: 0.3rem 0.8rem !important;
+            margin: 0.1rem 0.2rem !important;
+            font-weight: 600 !important;
+        }
+        .stRadio>div>label[data-selected="true"] {
+            background: linear-gradient(90deg, #00B4D8 0%, #48CAE4 100%) !important;
+            color: #18191A !important;
+        }
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, #00B4D8 0%, #18191A 100%);
+            border: none;
+            margin: 2.5rem 0 2rem 0;
+            border-radius: 2px;
+        }
+        .section-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00B4D8;
+            margin-bottom: 1.2rem;
+            display: flex; align-items: center; gap: 0.7rem;
+        }
+        </style>''', unsafe_allow_html=True)
+
         tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "🔍 Analysis", 
             "📊 Visualization", 
@@ -171,25 +603,21 @@ class MainInterface:
         ])
 
         with tab1:
+            # Render directly to avoid empty wrapping cards
             self._render_analysis_tab()
-
         with tab2:
             self._render_visualization_tab()
-
         with tab3:
             self._render_results_tab()
-
         with tab4:
             self._render_reports_tab()
-
         with tab5:
             self._render_batch_comparison_tab()
-
         with tab6:
             self._render_settings_tab()
-
         with tab7:
             self._render_info_tab()
+        # Note: We avoid HTML wrappers around Streamlit elements to prevent empty blocks and duplication
 
     def _render_batch_comparison_tab(self):
         """Render batch comparison and advanced visualizations."""
@@ -1305,8 +1733,7 @@ class MainInterface:
 
         st.header(f"📊 Visualization - {st.session_state.current_pdb}")
 
-        # Accessibility: ARIA label for main visualization
-        st.markdown('<div aria-label="Protein 3D Structure Visualization" tabindex="0"></div>', unsafe_allow_html=True)
+    # Accessibility: Keep headings semantic; avoid extra empty containers that can create layout artifacts
 
         # Show active individual filters summary
         active_filters = {itype: filter_val for itype, filter_val in st.session_state.individual_strength_filters.items() if filter_val != 'all'}
@@ -1339,6 +1766,42 @@ class MainInterface:
             st.session_state.current_pdb,
             filtered_result,
             [itype for itype, selected in st.session_state.selected_interactions.items() if selected]
+        )
+
+        # Ensure UI text visibility and remove any stray empty decorative blocks
+        st.markdown(
+                """
+                <style>
+                /* Force select and button text to be visible in dark theme */
+                .stSelectbox [role="combobox"],
+                .stSelectbox div[data-baseweb="select"],
+                .stSelectbox div[data-baseweb="select"] * {
+                        color: #F5F6FA !important;
+                }
+                .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+                        color: #18191A !important;
+                }
+                </style>
+                <script>
+                // Remove empty glass-card blocks (if any remain from older renders)
+                document.querySelectorAll('.glass-card').forEach(function(card){
+                    const text = card.textContent.trim();
+                    const hasChildWidgets = card.querySelector('[data-testid]');
+                    if(text.length === 0 && !hasChildWidgets){ card.remove(); }
+                });
+                // Remove lone 'Visualization' headers preceding the main header
+                const headers = Array.from(document.querySelectorAll('.section-header'));
+                headers.forEach(h => {
+                    const txt = h.textContent.trim();
+                    if (/^Visualization$/i.test(txt)) {
+                        const container = h.closest('div');
+                        if (container && container.parentElement) container.remove();
+                        else h.remove();
+                    }
+                });
+                </script>
+                """,
+                unsafe_allow_html=True,
         )
 
         # External database links

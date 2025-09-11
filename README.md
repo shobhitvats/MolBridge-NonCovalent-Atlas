@@ -1,6 +1,6 @@
-# Protein-Interaction-Explorer
+# MolBridge: NonCovalent Atlas
 
-A comprehensive, production-ready Streamlit application for analyzing noncovalent interactions in protein structures. This tool provides state-of-the-art detection algorithms for 11 different types of molecular interactions, interactive 3D visualization, and extensive reporting capabilities.
+A comprehensive, production-ready Streamlit application for analyzing noncovalent interactions in protein structures. MolBridge provides state-of-the-art detection algorithms for 11 different types of molecular interactions, interactive 3D visualization, and extensive reporting capabilities.
 
 ## 🚀 Features
 
@@ -323,14 +323,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🏆 Citation
 
-If you use Protein Interaction Explorer in your research, please cite:
+If you use MolBridge in your research, please cite:
 
 ```bibtex
-@software{protein_interaction_explorer,
-  title={Protein Interaction Explorer: Comprehensive Analysis of Noncovalent Interactions in Protein Structures},
+@software{molbridge,
+   title={MolBridge: NonCovalent Atlas for Comprehensive Analysis of Noncovalent Interactions in Protein Structures},
   author={Your Name},
   year={2024},
-  url={https://github.com/yourusername/protein-interaction-explorer}
+   url={https://github.com/yourusername/protein-interaction-explorer}
 }
 ```
 

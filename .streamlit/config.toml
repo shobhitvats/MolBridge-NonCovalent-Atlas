@@ -1,33 +1,23 @@
-[global]
 
-# If false, makes your Streamlit script aware of its own location
-developmentMode = false
 
-# Allows you to type a variable or string by itself in a single line of Python code to write it to the app
-dataFrameSerialization = "legacy"
 
-[logger]
 
-# Level of logging: 'error', 'warning', 'info', 'debug'
-level = "info"
+
+[theme]
+base = "dark"
+primaryColor = "#00B4D8"
+backgroundColor = "#18191A"
+secondaryBackgroundColor = "#242526"
+textColor = "#F5F6FA"
+font = "sans serif"
 
 [client]
-
-# Whether to enable st.cache
-caching = true
-
-# If false, will attempt to open a new tab or window when the user clicks on a URL
 showSidebarNavigation = true
-
-# Controls whether uncaught app exceptions are displayed in the browser. By default, this is set to True and Streamlit displays app exceptions and associated tracebacks in the browser.
 showErrorDetails = true
 
+
 [server]
-
-# List of folders that should not be watched for changes. This impacts both "Run on Save" and @st.cache
-folderWatchBlacklist = ['']
-
-# Change the type of file watcher used by Streamlit, or turn it off completely
+headless = true
 fileWatcherType = "auto"
 
 # Symmetric key used to produce signed cookies. If deploying on multiple replicas, this should be set to the same value across all replicas to ensure they all validate cookies identically

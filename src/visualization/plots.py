@@ -44,38 +44,40 @@ class InteractionPlots:
             return default_value
     
     def render_chain_heatmap(self, analysis_result: Dict[str, Any]):
-        """Render chain-vs-chain interaction heatmap."""
+        """Render chain-vs-chain interaction heatmap with Lottie fallback."""
+        from streamlit_lottie import st_lottie
+        import requests
         st.subheader("🔥 Chain Interaction Heatmap")
-        
-        # Extract chain interaction data
         chain_matrix = self._create_chain_interaction_matrix(analysis_result)
-        
         if chain_matrix.empty:
+            st_lottie(requests.get("https://assets2.lottiefiles.com/packages/lf20_3rwasyjy.json").json(), height=180, key="empty_heatmap")
             st.warning("No inter-chain interactions found")
             return
-        
-        # Create heatmap
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        sns.heatmap(
-            chain_matrix,
-            annot=True,
-            fmt='d',
-            cmap='YlOrRd',
-            ax=ax,
-            cbar_kws={'label': 'Number of Interactions'}
-        )
-        
-        ax.set_title('Inter-Chain Interaction Count')
-        ax.set_xlabel('Chain')
-        ax.set_ylabel('Chain')
-        
-        st.pyplot(fig)
-        plt.close()
-        
-        # Interactive version with Plotly
+        try:
+            fig, ax = plt.subplots(figsize=(10, 8))
+            sns.heatmap(
+                chain_matrix,
+                annot=True,
+                fmt='d',
+                cmap='YlOrRd',
+                ax=ax,
+                cbar_kws={'label': 'Number of Interactions'}
+            )
+            ax.set_title('Inter-Chain Interaction Count')
+            ax.set_xlabel('Chain')
+            ax.set_ylabel('Chain')
+            st.pyplot(fig)
+            plt.close()
+        except Exception as e:
+            st_lottie(requests.get("https://assets2.lottiefiles.com/packages/lf20_3rwasyjy.json").json(), height=180, key="error_heatmap")
+            st.error(f"Error rendering heatmap: {e}")
+            return
         if st.checkbox("Show Interactive Heatmap"):
-            self._render_interactive_heatmap(chain_matrix)
+            try:
+                self._render_interactive_heatmap(chain_matrix)
+            except Exception as e:
+                st_lottie(requests.get("https://assets2.lottiefiles.com/packages/lf20_3rwasyjy.json").json(), height=180, key="error_interactive_heatmap")
+                st.error(f"Error rendering interactive heatmap: {e}")
     
     def _create_chain_interaction_matrix(self, analysis_result: Dict[str, Any]) -> pd.DataFrame:
         """Create chain interaction matrix."""
@@ -127,37 +129,35 @@ class InteractionPlots:
         st.plotly_chart(fig, use_container_width=True)
     
     def render_interaction_distribution(self, analysis_result: Dict[str, Any]):
-        """Render interaction type distribution plots."""
+        """Render interaction type distribution plots with Lottie fallback."""
+        from streamlit_lottie import st_lottie
+        import requests
         st.subheader("📊 Interaction Distribution")
-        
         interactions = analysis_result.get('interactions', {})
-        
-        # Count interactions by type
         interaction_counts = {
             self._get_display_name(int_type): len(int_list)
             for int_type, int_list in interactions.items()
-            if int_list  # Only include non-empty lists
+            if int_list
         }
-        
         if not interaction_counts:
+            st_lottie(requests.get("https://assets2.lottiefiles.com/packages/lf20_3rwasyjy.json").json(), height=180, key="empty_dist")
             st.warning("No interactions found")
             return
-        
-        # Choose visualization type
         viz_type = st.radio(
             "Visualization Type:",
             ["Bar Chart", "Pie Chart", "Distance Distribution"],
             horizontal=True
         )
-        
-        if viz_type == "Bar Chart":
-            self._render_bar_chart(interaction_counts)
-        
-        elif viz_type == "Pie Chart":
-            self._render_pie_chart(interaction_counts)
-        
-        elif viz_type == "Distance Distribution":
-            self._render_distance_distribution(interactions)
+        try:
+            if viz_type == "Bar Chart":
+                self._render_bar_chart(interaction_counts)
+            elif viz_type == "Pie Chart":
+                self._render_pie_chart(interaction_counts)
+            elif viz_type == "Distance Distribution":
+                self._render_distance_distribution(interactions)
+        except Exception as e:
+            st_lottie(requests.get("https://assets2.lottiefiles.com/packages/lf20_3rwasyjy.json").json(), height=180, key="error_dist")
+            st.error(f"Error rendering distribution: {e}")
     
     def _render_bar_chart(self, interaction_counts: Dict[str, int]):
         """Render bar chart of interaction counts."""
