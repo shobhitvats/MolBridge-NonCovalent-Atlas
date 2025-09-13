@@ -1,0 +1,154 @@
+Project: MolBridge — NonCovalent Atlas (Protein Interaction Analysis Server)
+
+Overview
+MolBridge is a production-ready Streamlit application for analyzing noncovalent interactions in protein structures. It provides:
+- Detection of 11+ interaction types using Biopython-driven geometry
+- High-performance batch processing with parallelism and caching
+- Interactive 3D visualization via py3Dmol
+- Rich plotting (heatmaps, distributions) with Lottie fallbacks
+- Export/report generation to PDF, Excel, PPTX
+- REST API endpoints (FastAPI) for programmatic access
+- Session management, bookmarks, and reproducible runs
+
+Repository Structure
+- server.py
+  Streamlit entrypoint that sets page config, wires SessionManager, CacheManager, AppConfig, and MainInterface, and runs the UI.
+
+- src/
+  - analysis/
+    Core detectors for interaction types (each module exposes detection logic, typically using Bio.PDB and numpy):
+    - hydrogen_bonds.py
+    - halogen_bonds.py
+    - chalcogen_bonds.py
+    - pnictogen_bonds.py
+    - tetrel_bonds.py
+    - ch_pi_interactions.py (uses scipy.spatial.cKDTree)
+    - pi_pi_stacking.py
+    - anion_pi_interactions.py
+    - n_pi_star_interactions.py
+    - london_dispersion.py
+    - batch_processor.py (HighPerformanceBatchProcessor orchestrates per-structure and batch workflows; integrates parallel processing, caching, and configurable filters)
+  
+  - api/
+    - endpoints.py (FastAPI app with endpoints to start jobs, check status, and download results)
+  
+  - performance/
+    - parallel_processor.py (HighPerformanceProcessor; thread/process pools, metrics, cache integration; exported get_global_processor())
+  
+  - reporting/
+    - report_generator.py (PDF, Excel, PPTX generation using reportlab, openpyxl, python-pptx; embeds analysis summaries, tables, and figures)
+  
+  - ui/
+    - main_interface.py (Primary Streamlit UI controller; renders hero section, sidebar controls, tabs: Analysis, Visualization, Results, Reports, Batch Comparison, Settings, Info; manages session state and orchestrates processing and visualization)
+  
+  - utils/
+    - config.py (AppConfig with Interaction/Visualization/Processing configs; loads .env via python-dotenv; presets: conservative, literature_default, exploratory; provides get_interaction_types and display names)
+    - pdb_handler.py (download/parse PDB via requests + Bio.PDB; optional biotite integration; structure cleaning: waters removal, altloc handling, rudimentary H-addition; caching hooks)
+    - cache.py (CacheManager using diskcache + small metadata helpers; network fetch via requests)
+    - session.py (SessionManager for saving/loading sessions, notes, bookmarks, list/delete/import/export; basic comparison utilities)
+  
+  - visualization/
+    - structure_viewer.py (py3Dmol viewer HTML builder; overlays interaction lines; residue search/selection UI elements in Streamlit)
+    - plots.py (matplotlib/seaborn/plotly plots; heatmap, distributions; Lottie fallbacks via streamlit-lottie when no data or errors)
+
+Top-level files
+- README.md: Features, installation, usage, REST API examples, deployment guides, troubleshooting.
+- requirements.txt: Full dependency set for local/dev.
+- requirements-prod.txt: Slimmer set for Streamlit Cloud prod (now includes streamlit-lottie).
+- Dockerfile: Container build for local/prod.
+- Procfile: Process definitions (e.g., web/worker if used by platforms like Heroku).
+- deploy.sh: Helper script for common deployment options.
+- start_server.sh: Convenience launcher for Streamlit.
+- tests and utilities: test_pdb_data.py, test_single_interaction.py, etc.
+
+Key Components and Contracts
+1) Analysis Pipeline
+- Inputs: PDB IDs or uploaded structures; interaction filters; parameters/presets.
+- Process: PDB download/parse → structure preprocessing → per-interaction-type detection → aggregation → caching → summaries.
+- Outputs (per structure):
+  - summary: counts per interaction type, timing metrics
+  - interactions: dict of lists, each item with geometric details (distances/angles/residue IDs)
+  - metadata: basic structure info
+- Error modes: download failures, parsing errors, empty interactions; handled with loguru logging and Streamlit messages.
+
+2) High-Performance Processing
+- ThreadPoolExecutor/ProcessPoolExecutor for parallel batch runs; max_workers configurable.
+- Diskcache-based persistent cache for PDB files and results.
+- Metrics: analysis time, throughput, task counts stored in session_state.performance_metrics.
+
+3) UI/UX
+- Sidebar: theme switch, quick PDB entry, interaction filters with integrated strength radios, advanced input, quick settings, sessions, performance monitor.
+- Hero section: “MolBridge” title, “NonCovalent Atlas” bold subtitle, animated background and cursor glow.
+- Tabs:
+  - Analysis: parameter controls, run single/batch, summaries.
+  - Visualization: chain heatmaps, interactive plots; py3Dmol 3D viewer (in structure tab elsewhere).
+  - Results: tables/dataframes of detected interactions.
+  - Reports: generate PDF/Excel/PPTX; download artifacts.
+  - Batch Comparison: cross-structure comparative charts, networks.
+  - Settings: deployment and environment guidance, presets.
+  - Info: criteria per interaction type with IUPAC references.
+
+4) Visualization
+- py3Dmol: builds viewer HTML; overlays bonds/lines for chosen interactions; chain/color styles; ligand toggles.
+- Plots: seaborn heatmaps, plotly interactive charts; fallback animations via streamlit-lottie when no data.
+
+5) Session & Cache
+- SessionManager: JSON-based sessions in cache/sessions; export/import; bookmarks/notes per PDB; metadata counts.
+- CacheManager: diskcache for PDB content and results; expiry based on config; simple REST retrieval helpers.
+
+6) REST API
+- FastAPI app (api/endpoints.py): start analysis, check status, retrieve results/reports.
+- Pydantic models for validation; CORS middleware.
+- Streaming responses for downloading generated files.
+
+7) Reporting
+- reportlab: PDF templates (Paragraph/Table/Styles); structured report with parameters, figures, and tables.
+- openpyxl: multi-sheet Excel with styles.
+- python-pptx: summary slides with figures.
+
+Dependencies (Pinned in requirements)
+- UI/Server: streamlit, fastapi, uvicorn
+- Bio: biopython, biopandas (optional), biotite (optional), MDAnalysis (optional)
+- Sci/Math: numpy, scipy, pandas, scikit-learn
+- Viz: matplotlib, seaborn, plotly, py3Dmol, streamlit-lottie
+- Reports: reportlab, openpyxl, python-pptx, Pillow, fpdf2
+- Utils: requests, httpx, aiofiles, python-multipart, tqdm, stqdm, diskcache, joblib, pydantic, python-dotenv, loguru
+
+Data Flow Summary
+- User selects inputs → PDBHandler retrieves content (cache→network) → structure parsed to Bio.PDB Structure → detectors compute interactions → results aggregated → UI renders plots/tables/3D viewer → optional report/export → sessions saved to disk.
+
+Edge Cases & Handling
+- Invalid PDB ID: graceful error + Lottie fallback visuals.
+- No interactions found: informational warnings and empty-state animations.
+- Network failures/timeouts: logged; retry logic at user discretion.
+- Large batch sizes: limited by config.processing.max_batch_size; progress bars and metrics.
+- ALTLOC/hydrogen handling: simplified heuristics; flagged for future refinement.
+
+Configuration
+- AppConfig holds defaults; presets adjust key cutoffs.
+- .env variables loaded (OPENAI_API_KEY, ANTHROPIC_API_KEY optional).
+- Streamlit configuration via st.set_page_config in server.py.
+
+How to Run
+- Local: `streamlit run server.py`
+- API (dev): `python src/api/endpoints.py` (if implemented to run standalone)
+- Docker: `docker build -t protein-explorer . && docker run -p 8501:8501 -p 8000:8000 protein-explorer`
+
+Deployment Notes
+- Streamlit Cloud: uses requirements-prod.txt (now includes streamlit-lottie). Set `server.py` as main.
+- Environment vars for production (see README): server settings, performance caps.
+
+Testing Notes
+- Contains basic tests/util scripts (e.g., simple_viewer_test.py, test_single_interaction.py). Extend with unit tests for detectors and integration tests for batch_processor and UI callbacks.
+
+Known Limitations & Next Steps
+- Hydrogen addition is heuristic; consider RDKit/OpenBabel for robust chemistry.
+- Cutoffs and angle criteria could be made residue/atom-type specific.
+- Expand REST API to support async job queues and persistent job store.
+- Improve error reporting and telemetry in production (metrics dashboard).
+- Optional deps (MDAnalysis/biotite) could be feature-gated in UI.
+
+Glossary
+- Interaction Types: hydrogenbond, halogenbond, chalcogenbond, pnictogenbond, tetrelbond, chpi, pipi, anionpi, npistar, dispersion, ionicinteraction, hydrophobiccontact
+- Structure: Bio.PDB Structure object
+- Session: JSON blob containing settings, results, metadata, bookmarks, notes
