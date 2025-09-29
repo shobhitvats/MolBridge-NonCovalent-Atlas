@@ -1,3 +1,13 @@
+# ============================================================================
+# Single authoritative dependency specification for MolBridge
+#
+# This file consolidates what was previously split across requirements.txt and
+# requirements-prod.txt. Optional / heavier integrations are marked clearly; you
+# can comment them out if not needed (e.g. minimal deployment).
+# To regenerate a locked snapshot for reproducible builds:
+#   pip install -r requirements.txt && pip freeze --exclude-editable > requirements.lock
+# ============================================================================
+
 # Core Streamlit and web framework
 streamlit>=1.32.0
 fastapi>=0.109.0
@@ -23,6 +33,8 @@ matplotlib>=3.8.0
 seaborn>=0.13.0
 plotly>=5.18.0
 streamlit-lottie>=0.0.5
+networkx>=3.2.0  # For force-directed interaction network layout
+rapidfuzz>=3.6.1   # For fuzzy search in command palette
 
 # Report generation
 reportlab>=4.0.0
@@ -47,12 +59,24 @@ joblib>=1.3.0
 
 # Configuration and logging
 pydantic>=2.6.0
+pydantic-settings>=2.0.0  # Needed for BaseSettings in Pydantic v2+
 python-dotenv>=1.0.0
 loguru>=0.7.0
+PyYAML>=6.0.0  # For scenario profile YAML loading
 
-# Optional ML/AI integrations
-openai>=1.12.0
-anthropic>=0.18.0
+# System / performance monitoring (optional)
+psutil>=5.9.0
 
-# LaTeX export (optional)
-pypandoc>=1.12
+# Testing & benchmarking (optional / dev)
+pytest>=8.0.0          # OPTIONAL: test framework
+pytest-benchmark>=4.0.0  # OPTIONAL: performance benchmarks
+
+# Optional acceleration
+numba>=0.59.0          # OPTIONAL: JIT acceleration (enable with MOLBRIDGE_USE_NUMBA=1)
+
+# Optional ML/AI integrations (comment out if unused)
+openai>=1.12.0      # OPTIONAL: AI-assisted summarization
+anthropic>=0.18.0   # OPTIONAL: Alternative LLM backend
+
+# LaTeX export (optional; requires system pandoc if full PDF pipeline used)
+pypandoc>=1.12      # OPTIONAL: Rich LaTeX / docx conversions

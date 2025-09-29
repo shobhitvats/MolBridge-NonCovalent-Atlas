@@ -1,0 +1,10 @@
+/* Dark theme overrides */
+body, .stApp { background-color: #18191A !important; color: #F5F6FA !important; }
+.glass-card { background: rgba(36,37,38,0.82); box-shadow: 0 8px 32px 0 #00B4D880; border: 1.5px solid rgba(0,180,216,0.18); }
+.gradient-btn button, .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+  background: linear-gradient(90deg, #00B4D8 0%, #48CAE4 100%) !important; color: #18191A !important; box-shadow: 0 2px 12px #00B4D880;
+}
+.gradient-btn button:hover, .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {
+  background: linear-gradient(90deg, #48CAE4 0%, #00B4D8 100%) !important; box-shadow: 0 6px 24px #00B4D8cc; transform: translateY(-2px) scale(1.04);
+}
+.section-divider { background: linear-gradient(90deg, #00B4D8 0%, #18191A 100%); }

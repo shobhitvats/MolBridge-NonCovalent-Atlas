@@ -1,0 +1,9 @@
+/* Select & multiselect hardening extracted */
+.stSelectbox > div > div[data-baseweb="select"], .stMultiSelect > div > div[data-baseweb="select"] {
+  position: relative !important; min-height: 46px !important; display: flex !important; align-items: center !important; padding: 0 10px !important;
+}
+.stSelectbox div[data-baseweb="select"] [class*="SingleValue"],
+.stSelectbox div[data-baseweb="select"] [class*="Value"],
+.stSelectbox div[data-baseweb="select"] [class*="Placeholder"] {
+  max-width: calc(100% - 28px) !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+}

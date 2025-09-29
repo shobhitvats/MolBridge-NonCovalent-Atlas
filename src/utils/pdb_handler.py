@@ -8,6 +8,12 @@ import requests
 from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
 import numpy as np
+import asyncio
+try:
+    import httpx  # for async multi-fetch
+    _HTTPX_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _HTTPX_AVAILABLE = False
 
 # Suppress Bio warnings
 warnings.filterwarnings("ignore")
@@ -16,7 +22,13 @@ from Bio import PDB
 from Bio.PDB import Structure, Model, Chain, Residue, Atom
 from Bio.PDB.PDBParser import PDBParser
 try:
-    from Bio.PDB.MMCIFIO import MMCIFIO
+    try:  # some BioPython builds may not expose MMCIFIO submodule path identically
+        from Bio.PDB.MMCIFIO import MMCIFIO  # type: ignore
+    except Exception:  # pragma: no cover
+        try:
+            from Bio.PDB import MMCIFIO  # type: ignore
+        except Exception:
+            MMCIFIO = None  # type: ignore
 except ImportError:
     # Fallback for older BioPython versions
     try:
@@ -33,6 +45,8 @@ except ImportError:
 from loguru import logger
 
 from utils.config import AppConfig
+from utils.structure_hash import compute_structure_coord_hash
+import numpy as np
 
 class PDBHandler:
     """Handles PDB file loading, processing, and structure manipulation."""
@@ -76,9 +90,90 @@ class PDBHandler:
                 logger.error(f"Failed to obtain PDB content for {pdb_id}")
                 return None
             
-            # Parse the structure
-            pdb_io = io.StringIO(pdb_content)
-            structure = self.parser.get_structure(pdb_id, pdb_io)
+            # Lightweight surrogate cache path (avoids reparsing heavy hierarchy)
+            surrogate_key = f"surrogate_{pdb_id}_{assembly}"
+            structure = None
+            if hasattr(self, 'cache_manager') and self.cache_manager:
+                surrogate = self.cache_manager.cache.get(surrogate_key)
+                if surrogate is not None:
+                    try:
+                        # Rehydrate minimal structure surrogate into Bio.PDB Structure
+                        structure = self._rehydrate_surrogate(pdb_id, surrogate)
+                    except Exception:
+                        structure = None
+            if structure is None:
+                # Parse the structure (original path)
+                # Attempt fast-path reconstruction from cached binary coordinate snapshot (.npz)
+                fast_rehydrated = False
+                if hasattr(self, 'cache_manager') and self.cache_manager:
+                    try:
+                        # Direct index key (new) to avoid scanning full key set
+                        idx_key = f"npz_index_{pdb_id}_{assembly}"
+                        npz_key = self.cache_manager.cache.get(idx_key)
+                        if npz_key is None:
+                            # Backwards compatibility: fall back to heuristic scan once, then store index key
+                            hits = []
+                            for key in list(self.cache_manager.cache.iterkeys())[:500]:  # heuristic cap
+                                if isinstance(key, str) and key.startswith(f"npz_coords_{pdb_id}_"):
+                                    hits.append(key)
+                            if hits:
+                                npz_key = hits[-1]
+                                # Cache the mapping for next time
+                                try:
+                                    self.cache_manager.cache.set(idx_key, npz_key, expire=7*24*3600)
+                                except Exception:
+                                    pass
+                        if npz_key:
+                            blob = self.cache_manager.cache.get(npz_key)
+                            if blob:
+                                import io as _io, numpy as _np
+                                buf = _io.BytesIO(blob)
+                                npz = _np.load(buf)
+                                coords = npz['coords'] if 'coords' in npz.files else None
+                                surrogate = None
+                                try:
+                                    surrogate = self.cache_manager.cache.get(f"surrogate_{pdb_id}_{assembly}")
+                                except Exception:
+                                    surrogate = None
+                                if surrogate and isinstance(coords, _np.ndarray) and coords.shape[0] == surrogate.get('atom_count'):
+                                    surrogate = dict(surrogate)
+                                    surrogate['coords'] = coords.astype('float32')
+                                    structure = self._rehydrate_surrogate(pdb_id, surrogate)
+                                    fast_rehydrated = structure is not None
+                    except Exception:
+                        fast_rehydrated = False
+                if not fast_rehydrated:
+                    pdb_io = io.StringIO(pdb_content)
+                    structure = self.parser.get_structure(pdb_id, pdb_io)
+                # Build & cache surrogate for future fast loads
+                if hasattr(self, 'cache_manager') and self.cache_manager:
+                    try:
+                        surrogate = self._build_surrogate(structure)
+                        self.cache_manager.cache.set(surrogate_key, surrogate, expire=7*24*3600)
+                    except Exception:  # pragma: no cover - non-critical
+                        pass
+                # Attempt binary coordinate cache (.npz) persistence keyed by hash
+                try:
+                    struct_hash = compute_structure_coord_hash(structure)
+                    if hasattr(self, 'cache_manager') and self.cache_manager:
+                        npz_key = f"npz_coords_{pdb_id}_{struct_hash}"
+                        existing = self.cache_manager.cache.get(npz_key)
+                        if not existing:
+                            arr = np.asarray([a.get_coord() for a in structure.get_atoms()], dtype='float32')  # type: ignore
+                            meta = np.asarray([0, arr.shape[0]], dtype='int32')  # simple header placeholder
+                            import io as _io
+                            buf = _io.BytesIO()
+                            # Store coordinates in compressed npz
+                            np.savez_compressed(buf, coords=arr, meta=meta)
+                            self.cache_manager.cache.set(npz_key, buf.getvalue(), expire=7*24*3600)
+                            # Store index key for direct lookup next time
+                            try:
+                                idx_key = f"npz_index_{pdb_id}_{assembly}"
+                                self.cache_manager.cache.set(idx_key, npz_key, expire=7*24*3600)
+                            except Exception:
+                                pass
+                except Exception:  # pragma: no cover
+                    pass
             
             # Process the structure based on configuration
             processed_structure = self._process_structure(structure)
@@ -89,10 +184,144 @@ class PDBHandler:
                 self.cache_manager.cache_structure_info(pdb_id, structure_info)
             
             logger.info(f"Successfully loaded structure {pdb_id}")
+            # Fire-and-forget background prewarm (KD-tree, rings) to hide first-detector cost
+            try:
+                import threading
+                def _prewarm(struct_ref):  # pragma: no cover - best-effort thread
+                    try:
+                        from analysis.feature_store import get_feature_store
+                        fs = get_feature_store()
+                        fs.ensure_coords(struct_ref)
+                        fs.ensure_kdtree(struct_ref)
+                        fs.ensure_rings(struct_ref)
+                        fs.ensure_classification(struct_ref)
+                    except Exception:
+                        pass
+                threading.Thread(target=_prewarm, args=(processed_structure,), daemon=True).start()
+            except Exception:
+                pass
             return processed_structure
             
         except Exception as e:
             logger.error(f"Failed to load structure {pdb_id}: {e}")
+            return None
+
+    # ---------------- Asynchronous multi-PDB fetch with ETag -----------------
+    async def fetch_multiple_pdbs(self, pdb_ids: List[str], assembly: str = "biological", concurrency: int = 5, use_etag: bool = True) -> Dict[str, Optional[str]]:
+        """Fetch multiple PDB files concurrently using httpx with optional ETag conditional requests.
+
+        Returns mapping pdb_id -> content (None if failed or 304 not modified and cache manager provides stored version).
+        """
+        results: Dict[str, Optional[str]] = {}
+        if not _HTTPX_AVAILABLE:
+            # Fallback sequential using existing synchronous path
+            for pid in pdb_ids:
+                try:
+                    results[pid] = self.cache_manager.get_pdb_file(pid, assembly) if self.cache_manager else self._download_pdb_file(pid, assembly)
+                except Exception:
+                    results[pid] = None
+            return results
+        sem = asyncio.Semaphore(concurrency)
+        base_url_primary = "https://files.rcsb.org/download/{pid}.pdb1" if assembly == "biological" else "https://files.rcsb.org/download/{pid}.pdb"
+        base_url_fallback = "https://files.rcsb.org/download/{pid}.pdb"
+
+        async def _fetch(pid: str):
+            async with sem:
+                url = base_url_primary.format(pid=pid)
+                headers = {}
+                if use_etag and self.cache_manager:
+                    et = self.cache_manager.get_pdb_etag(pid, assembly)
+                    if et:
+                        headers['If-None-Match'] = et
+                try:
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        r = await client.get(url, headers=headers)
+                        if r.status_code == 404 and assembly == 'biological':
+                            # retry fallback
+                            url2 = base_url_fallback.format(pid=pid)
+                            r = await client.get(url2, headers=headers)
+                        if r.status_code == 304 and self.cache_manager:
+                            # Not modified; retrieve cached
+                            cached = self.cache_manager.get_pdb_file(pid, assembly)
+                            results[pid] = cached
+                            return
+                        if r.status_code != 200:
+                            results[pid] = None
+                            return
+                        text = r.text
+                        results[pid] = text
+                        # Cache content & update ETag
+                        if self.cache_manager:
+                            try:
+                                self.cache_manager.cache.set(f"pdb_{pid}_{assembly}", text, expire=7*24*3600)
+                                etag = r.headers.get('ETag')
+                                if etag:
+                                    self.cache_manager.set_pdb_etag(pid, assembly, etag)
+                            except Exception:
+                                pass
+                except Exception:
+                    results[pid] = None
+        await asyncio.gather(*[_fetch(pid) for pid in pdb_ids])
+        return results
+
+    # ---------------- Surrogate Build / Rehydrate -----------------
+    def _build_surrogate(self, structure: Structure.Structure) -> Dict[str, Any]:
+        """Extract minimal arrays sufficient for downstream coordinate analyses.
+
+        Returns dict with keys: chains -> list; residues -> list of tuples;
+        atoms -> ndarray float32; atom_meta -> list of (resname, resid, chain, atom_name, element)
+        """
+        coords = []
+        meta = []
+        try:
+            for chain in structure.get_chains():
+                cid = chain.get_id()
+                for residue in chain:
+                    resname = residue.get_resname()
+                    resid = residue.get_id()[1]
+                    for atom in residue:
+                        coords.append(atom.get_coord())
+                        meta.append((resname, resid, cid, atom.get_name(), getattr(atom, 'element', '')))
+            arr = np.asarray(coords, dtype=np.float32) if coords else np.zeros((0,3), dtype=np.float32)
+            return {
+                'coords': arr,
+                'meta': meta,
+                'atom_count': arr.shape[0]
+            }
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"Surrogate build failed: {e}")
+            return {'coords': np.zeros((0,3), dtype=np.float32), 'meta': [], 'atom_count': 0}
+
+    def _rehydrate_surrogate(self, pdb_id: str, surrogate: Dict[str, Any]) -> Optional[Structure.Structure]:
+        """Reconstruct a minimal Bio.PDB Structure with atom coordinates and metadata.
+
+        Hierarchy: Structure -> Model(0) -> Chain -> Residue -> Atom.
+        Only fields required by detectors (resname, id, chain id, element, coord) are populated.
+        """
+        try:
+            builder = PDB.StructureBuilder.StructureBuilder()  # type: ignore
+            builder.init_structure(pdb_id)
+            builder.init_model(0)
+            current_chain = None
+            current_res_key = None
+            for (resname, resid, cid, atom_name, element), coord in zip(surrogate.get('meta', []), surrogate.get('coords', [])):
+                if current_chain != cid:
+                    builder.init_chain(cid)
+                    current_chain = cid
+                res_key = (cid, resid, resname)
+                if current_res_key != res_key:
+                    builder.init_seg(' ')
+                    builder.init_residue(resname, ' ', resid, ' ')
+                    current_res_key = res_key
+                builder.init_atom(atom_name, coord, 1.0, 1.0, ' ', atom_name, 0, element or atom_name[0])
+            # Attach cached coordinate hash if available to avoid recomputation
+            try:
+                setattr(builder.get_structure(), '_molbridge_coord_hash', (16, compute_structure_coord_hash(builder.get_structure()), surrogate.get('atom_count', 0)))
+            except Exception:
+                pass
+            return builder.get_structure()
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"Surrogate rehydrate failed: {e}")
             return None
     
     def get_pdb_content(self, pdb_id: str, assembly: str = "biological") -> Optional[str]:
@@ -159,6 +388,67 @@ class PDBHandler:
             self._add_missing_hydrogens(structure)
         
         return structure
+
+    # ------------------------------------------------------------------
+    # New Variant Fetching & Filtering API
+    # ------------------------------------------------------------------
+    def fetch_structure_variant(self,
+                                pdb_id: str,
+                                assembly: str = "biological",
+                                include_ligands: bool = True,
+                                exclude_waters: bool = True,
+                                ligand_whitelist: Optional[List[str]] = None) -> Optional[Structure.Structure]:
+        """Fetch a structure variant with assembly selection and optional filtering.
+
+        This method wraps load_structure but applies ligand/water filtering AFTER
+        initial processing while caching variants to avoid repeated parsing.
+
+        Cache key format: f"{pdb_id}|{assembly}|L{int(include_ligands)}|W{int(exclude_waters)}"
+        """
+        try:
+            if ligand_whitelist is None:
+                ligand_whitelist = []
+            if not hasattr(self, '_variant_cache'):
+                self._variant_cache = {}
+            cache_key = f"{pdb_id}|{assembly}|L{int(include_ligands)}|W{int(exclude_waters)}"
+            if cache_key in self._variant_cache:
+                return self._variant_cache[cache_key]
+
+            base_structure = self.load_structure(pdb_id, assembly=assembly)
+            if base_structure is None:
+                return None
+
+            # Deep copy the structure (BioPython structures are mutable); a light clone
+            import copy
+            structure = copy.deepcopy(base_structure)
+
+            # Apply dynamic water removal override (overriding global config if necessary)
+            if exclude_waters:
+                self._remove_waters(structure)
+
+            if not include_ligands:
+                self._remove_ligands(structure, whitelist=ligand_whitelist)
+
+            self._variant_cache[cache_key] = structure
+            return structure
+        except Exception as e:
+            logger.error(f"Failed to fetch structure variant for {pdb_id}: {e}")
+            return None
+
+    def _remove_ligands(self, structure: Structure.Structure, whitelist: Optional[List[str]] = None):
+        """Remove non-standard residues considered ligands unless whitelisted."""
+        if whitelist is None:
+            whitelist = []
+        whitelist = {w.upper() for w in whitelist}
+        for model in structure:
+            for chain in list(model):
+                for residue in list(chain):
+                    resname = residue.get_resname().strip().upper()
+                    if (resname not in self.standard_amino_acids and
+                        resname not in self.standard_nucleotides and
+                        resname not in self.water_molecules and
+                        resname not in whitelist):
+                        chain.detach_child(residue.get_id())
     
     def _remove_waters(self, structure: Structure.Structure):
         """Remove water molecules from structure."""
@@ -340,6 +630,50 @@ class PDBHandler:
                         coordinates[chain_id][residue_id][atom_name] = atom.get_coord()
         
         return coordinates
+
+    # ------------------------------------------------------------------
+    # Minimal internal representation extraction for downstream heuristics
+    # ------------------------------------------------------------------
+    def to_internal_representation(self, structure: Structure.Structure) -> List[Dict[str, Any]]:
+        """Convert a Bio.PDB structure to the lightweight format expected by
+        structural extensions (list with one dict containing 'residues').
+
+        Each residue entry contains:
+            {
+              'id': f"{chain_id}:{resseq}",
+              'name': resname,
+              'seq': resseq,
+              'chain': chain_id,
+              'atoms': [ {'name': atom_name, 'coord': (x,y,z)} ... ]
+            }
+        """
+        residues = []
+        try:
+            model = structure[0]
+        except Exception:
+            return []
+        for chain in model:
+            chain_id = chain.get_id()
+            for residue in chain:
+                resname = residue.get_resname().strip()
+                # Skip waters / non-standard if desired? Keep all – filters happen later.
+                hetflag, resseq, icode = residue.get_id()
+                # Build atom list with Cartesian coords
+                atoms = []
+                for atom in residue:
+                    try:
+                        c = atom.get_coord()
+                        atoms.append({'name': atom.get_name(), 'coord': (float(c[0]), float(c[1]), float(c[2]))})
+                    except Exception:
+                        continue
+                residues.append({
+                    'id': f"{chain_id}:{resseq}",
+                    'name': resname,
+                    'seq': resseq,
+                    'chain': chain_id,
+                    'atoms': atoms
+                })
+        return [{ 'residues': residues }]
     
     def calculate_distance(self, atom1: Atom.Atom, atom2: Atom.Atom) -> float:
         """Calculate distance between two atoms."""

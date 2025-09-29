@@ -4,12 +4,19 @@ Detects interactions between C-H bonds and π-systems.
 """
 
 from typing import List, Dict, Any, Optional, Set, Tuple
+import time
 import numpy as np
 from Bio.PDB import Structure, Residue, Atom
-from scipy.spatial import cKDTree
+from utils.settings import get_settings
+from utils.instrumentation import init_funnel, update_counts, finalize_funnel
+from analysis.feature_store import get_feature_store
+from geometry.core import pairwise_within_cutoff, norms, vector_fields
 
 from utils.config import AppConfig
 
+from .base_detector import register_detector
+
+@register_detector("chpi", method="detect_ch_pi_interactions")
 class CHPiDetector:
     """Detects C-H···π interactions in protein structures."""
     
@@ -69,11 +76,20 @@ class CHPiDetector:
         Returns:
             List of detected interactions with details
         """
-        interactions = []
-        
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:  # pragma: no cover
+                pass
+        interactions: List[Dict[str, Any]] = []
+        raw_pairs = 0
+        candidate_pairs = 0
+        t_pair_start = time.time()
+
         # Get all residues
         residues = list(structure.get_residues())
-        
+
         # Find aromatic residues (π-acceptors)
         aromatic_residues = []
         for residue in residues:
@@ -87,6 +103,7 @@ class CHPiDetector:
                 ch_donor_residues.append(residue)
         
         # Check interactions between C-H donors and π-acceptors
+        raw_pairs = len(ch_donor_residues) * len(aromatic_residues)
         for donor_res in ch_donor_residues:
             for acceptor_res in aromatic_residues:
                 # Skip same residue
@@ -110,8 +127,165 @@ class CHPiDetector:
                             donor_res, carbon_name, hydrogen_names,
                             acceptor_res, ring_center, ring_normal, ring_atoms
                         )
+                        prev_len = len(interactions)
                         interactions.extend(ch_interactions)
-        
+                        if ch_interactions and len(interactions) > prev_len:
+                            candidate_pairs += 1  # each productive ring counts once
+
+        t_eval_end = time.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=len(interactions),
+            core_pair_generation=False,
+            extra={
+                'donor_residues': len(ch_donor_residues),
+                'aromatic_residues': len(aromatic_residues),
+                'candidate_density': (candidate_pairs/raw_pairs) if raw_pairs else 0.0
+            }
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=0.0,
+            eval_seconds=(t_eval_end - t_pair_start),
+            build_seconds=0.0
+        )
+        from loguru import logger as _l
+        _l.info(f"CH-π: {len(interactions)} (raw={raw_pairs} cand_units={candidate_pairs} acc_ratio={self.instrumentation['acceptance_ratio']:.3f})")
+        return interactions
+
+    # ---- Vector fast path leveraging ring FeatureStore and pair pruning ----
+    def _vector_detect(self, structure: Structure) -> List[Dict[str, Any]]:
+        interactions: List[Dict[str, Any]] = []
+        t_pair_start = time.time()
+        try:
+            model = structure[0]
+        except Exception:
+            return interactions
+        fs = get_feature_store()
+        rings = fs.ensure_rings(structure)
+        if not rings:
+            return interactions
+        ring_centers = np.vstack([r['centroid'] for r in rings]).astype('float32')
+        ring_normals = np.vstack([r['normal'] for r in rings]).astype('float32')
+        ring_meta = [(r['residue'].parent.id, r['residue']) for r in rings]
+        donor_entries = []  # (residue, carbon_atom, hydrogen_atom or inferred_coord, hydrogen_name, is_inferred)
+        # Collect all donor heavy atoms & hydrogens (explicit and infer where needed)
+        for chain in model:
+            for residue in chain:
+                resname = residue.resname
+                if resname not in self.ch_donors:
+                    continue
+                for carbon_name, hydrogen_names in self.ch_donors[resname]:
+                    if carbon_name not in residue:
+                        continue
+                    carbon_atom = residue[carbon_name]
+                    for h_name in hydrogen_names:
+                        if h_name in residue:
+                            donor_entries.append((residue, carbon_atom, residue[h_name], h_name, False))
+                        else:
+                            h_coord = self._infer_hydrogen_position(residue, carbon_atom, h_name)
+                            if h_coord is not None:
+                                # lightweight proxy storing coord
+                                donor_entries.append((residue, carbon_atom, type('HProxy', (), {'name': h_name, 'coord': h_coord, 'element': 'H'})(), h_name, True))
+        if not donor_entries:
+            return interactions
+        # Build coordinate arrays for hydrogen positions to prune vs ring centroids
+        h_coords = np.vstack([d[2].coord for d in donor_entries]).astype('float32')
+        # Broad pruning with max distance
+        max_d = float(self.interaction_config.ch_pi_max_distance)
+        try:
+            hi, ri, dists = pairwise_within_cutoff(h_coords, ring_centers, max_d, use_kdtree=True, return_distances=True)
+            core = True
+        except Exception:  # pragma: no cover
+            diff = h_coords[:, None, :] - ring_centers[None, :, :]
+            dist2 = np.sum(diff*diff, axis=-1)
+            mask = dist2 <= (max_d**2)
+            hi, ri = np.where(mask)
+            hi = hi.astype('int32'); ri = ri.astype('int32')
+            dists = np.sqrt(dist2[hi, ri]).astype('float32')
+            core = False
+        raw_pairs = int(h_coords.shape[0] * ring_centers.shape[0])
+        candidate_pairs = int(len(hi))
+        t_pair_end = time.time()
+        t_eval_start = t_pair_end
+        # Precompute distances for candidates for early rejects on min distance and height later
+    # dists already computed when return_distances True
+        accepted_units = 0
+        # Map hydrogen index to (residue, carbon_atom)
+        for idx in range(candidate_pairs):
+            h_index = int(hi[idx]); r_index = int(ri[idx])
+            dist = float(dists[idx])
+            if dist < self.interaction_config.ch_pi_min_distance or dist > self.interaction_config.ch_pi_max_distance:
+                continue
+            residue, carbon_atom, hydrogen_atom, h_name, inferred = donor_entries[h_index]
+            ring_chain, ring_residue = ring_meta[r_index]
+            # Skip same residue or near sequence proximity (<3 apart same chain)
+            if residue is ring_residue:
+                continue
+            if (residue.parent == ring_residue.parent and abs(residue.id[1] - ring_residue.id[1]) < 3):
+                continue
+            ring_center = ring_centers[r_index]
+            ring_normal = ring_normals[r_index]
+            # Geometry evaluation
+            ch_vector = hydrogen_atom.coord - carbon_atom.coord
+            h_ring_vector = ring_center - hydrogen_atom.coord
+            ch_norm = np.linalg.norm(ch_vector)
+            hr_norm = np.linalg.norm(h_ring_vector)
+            if ch_norm == 0 or hr_norm == 0:
+                continue
+            ch_unit = ch_vector / ch_norm
+            hr_unit = h_ring_vector / hr_norm
+            cos_angle = np.clip(np.dot(ch_unit, hr_unit), -1.0, 1.0)
+            ch_ring_angle = float(np.degrees(np.arccos(cos_angle)))
+            if ch_ring_angle > self.interaction_config.ch_pi_max_angle:
+                continue
+            # Height above plane
+            height = abs(float(np.dot(hydrogen_atom.coord - ring_center, ring_normal)))
+            if height > self.interaction_config.ch_pi_max_height:
+                continue
+            strength = self._calculate_ch_pi_strength(dist, ch_ring_angle, height)
+            interaction_type = self._classify_ch_pi_type(residue, carbon_atom, ring_residue)
+            interactions.append({
+                'type': 'ch_pi',
+                'subtype': interaction_type,
+                'residue1': f"{residue.resname}{residue.id[1]}",
+                'chain1': residue.parent.id,
+                'residue2': f"{ring_residue.resname}{ring_residue.id[1]}",
+                'chain2': ring_residue.parent.id,
+                'atom1': carbon_atom.name,
+                'atom2': 'RING_CENTER',
+                'hydrogen': hydrogen_atom.name,
+                'distance': dist,
+                'angle': ch_ring_angle,
+                'height': height,
+                'strength': strength,
+                'donor_coord': carbon_atom.coord.tolist(),
+                'acceptor_coord': ring_center.tolist(),
+                'hydrogen_coord': hydrogen_atom.coord.tolist(),
+                'ring_atoms': [a for a in []],  # omit per-ring atoms list for speed (can be added)
+            })
+            accepted_units += 1
+        t_eval_end = time.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=accepted_units,
+            core_pair_generation=core,
+            extra={
+                'hydrogens': h_coords.shape[0],
+                'rings': ring_centers.shape[0],
+                'candidate_density': (candidate_pairs / raw_pairs) if raw_pairs else 0.0
+            }
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=(t_pair_end - t_pair_start),
+            eval_seconds=(t_eval_end - t_eval_start),
+            build_seconds=0.0
+        )
+        from loguru import logger as _l
+        _l.info(f"CH-π[vector]{'/core' if core else ''}: {accepted_units} raw={raw_pairs} pruned={candidate_pairs} acc={self.instrumentation['acceptance_ratio']:.3f}")
         return interactions
     
     def _get_ring_center_and_normal(self, residue: Residue, ring_atoms: List[str]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:

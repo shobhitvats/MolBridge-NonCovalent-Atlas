@@ -64,8 +64,4 @@ chalcogen_debug.log
 *.md
 docs/
 
-# Deployment files (keep for reference)
-# deploy.sh
-# Dockerfile
-# Procfile
-# .streamlit/
+# Deployment files (Dockerfile, Procfile, .streamlit/) intentionally retained

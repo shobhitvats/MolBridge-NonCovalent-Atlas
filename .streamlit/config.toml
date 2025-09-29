@@ -18,16 +18,19 @@ showErrorDetails = true
 
 [server]
 headless = true
-fileWatcherType = "auto"
+# Reduce inotify pressure: options: 'auto', 'poll', 'none'
+# Setting to 'poll' to avoid exhausting inotify instances while retaining reload capability.
+fileWatcherType = "poll"
 
 # Symmetric key used to produce signed cookies. If deploying on multiple replicas, this should be set to the same value across all replicas to ensure they all validate cookies identically
 cookieSecret = "a-random-key-appears-here"
 
 # If false, will attempt to open a new tab or window when the user clicks on a URL
-enableCORS = false
+enableCORS = true
 
-# Enables support for Cross-Site Request Forgery (XSRF) protection, which is highly recommended for production deployments
-enableXsrfProtection = true
+# Enables support for Cross-Site Request Forgery (XSRF) protection
+# For local development we disable this to avoid conflicts with CORS
+enableXsrfProtection = false
 
 # Max size, in megabytes, for files uploaded with the file_uploader
 maxUploadSize = 200

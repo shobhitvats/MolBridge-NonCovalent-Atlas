@@ -1,0 +1,35 @@
+name: Nightly Performance Trend
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  nightly-microbench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest psutil
+      - name: Run microbench
+        env:
+          PYTHONPATH: src
+          MOLBRIDGE_ENABLE_VECTOR_GEOM: '1'
+          MOLBRIDGE_BENCH_REPEAT: '2'
+          MOLBRIDGE_BENCH_SEED: '42'
+        run: |
+          python -m performance.microbench > nightly_microbench.json || echo '{}' > nightly_microbench.json
+      - name: Upload nightly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-microbench
+          path: nightly_microbench.json
+          if-no-files-found: warn

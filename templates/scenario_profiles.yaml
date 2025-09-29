@@ -1,0 +1,70 @@
+"conservative_validation":
+  description: "Strict cutoffs focusing on high-confidence classical interactions"
+  preset: "conservative"
+  interactions:
+    - hydrogen_bonds
+    - salt_bridges
+    - ionic_interactions
+    - pi_pi_stacking
+  notes: "Use for validation-focused analysis where false positives must be minimized."
+
+"broad_exploration":
+  description: "Wide net including weak / directional interactions for hypothesis generation"
+  preset: "exploratory"
+  interactions:
+    - hydrogen_bonds
+    - halogen_bonds
+    - chalcogen_bonds
+    - pnictogen_bonds
+    - tetrel_bonds
+    - ch_pi_interactions
+    - pi_pi_stacking
+    - anion_pi_interactions
+    - cation_pi_interactions
+    - sulfur_pi_interactions
+    - n_pi_star_interactions
+    - london_dispersion
+    - hydrophobic_contacts
+  notes: "Casts a broad net; expect higher noise. Useful for discovering non-traditional contacts."
+
+"interface_hotspot_mapping":
+  description: "Focus on interactions that stabilize chain-chain interfaces"
+  preset: "literature_default"
+  interactions:
+    - hydrogen_bonds
+    - salt_bridges
+    - cation_pi_interactions
+    - pi_pi_stacking
+    - hydrophobic_contacts
+  notes: "Good starting point for identifying mutational targets in PPI design."
+
+"electrostatic_focus":
+  description: "Zoom in on electrostatically mediated interactions"
+  preset: "literature_default"
+  interactions:
+    - hydrogen_bonds
+    - salt_bridges
+    - ionic_interactions
+    - cation_pi_interactions
+    - anion_pi_interactions
+  notes: "Ideal when exploring charge optimization or pH-dependent stability."
+
+"sulfur_and_heavy_atoms":
+  description: "Emphasize interactions involving sulfur and heavier p-block elements"
+  preset: "exploratory"
+  interactions:
+    - chalcogen_bonds
+    - sulfur_pi_interactions
+    - pnictogen_bonds
+    - halogen_bonds
+  notes: "Highlights less common directional interactions for structural rationalization."
+
+"metal_site_context":
+  description: "Focus on metal coordination and nearby stabilizing contacts"
+  preset: "conservative"
+  interactions:
+    - metal_coordination
+    - hydrogen_bonds
+    - ionic_interactions
+    - cation_pi_interactions
+  notes: "Use for analyzing metalloenzyme active sites or metal-stabilized folds."

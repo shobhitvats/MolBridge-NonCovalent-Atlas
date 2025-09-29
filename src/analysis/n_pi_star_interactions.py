@@ -8,6 +8,9 @@ from typing import List, Dict, Any, Optional
 from Bio.PDB import Structure, Atom, Residue
 from dataclasses import dataclass
 from loguru import logger
+from utils.settings import get_settings
+from utils.instrumentation import init_funnel, update_counts, finalize_funnel
+from geometry.core import pairwise_within_cutoff, norms
 
 @dataclass
 class NPiStarInteraction:
@@ -63,7 +66,17 @@ class NPiStarDetector:
         Detect n→π* interactions in structure.
         Uses Bürgi-Dunitz angle (~102°) and O...C distance ~3.0 Å.
         """
-        interactions = []
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:  # pragma: no cover
+                pass
+        interactions: List[NPiStarInteraction] = []
+        raw_pairs = 0
+        candidate_pairs = 0
+        import time as _t
+        t_pair_start = _t.time()
         
         try:
             model = structure[0]  # Use first model
@@ -76,6 +89,7 @@ class NPiStarDetector:
             
             logger.info(f"Found {len(donor_atoms)} lone pair donors and {len(carbonyl_groups)} carbonyl groups")
             
+            raw_pairs = len(donor_atoms) * len(carbonyl_groups)
             for donor_info in donor_atoms:
                 for carbonyl_info in carbonyl_groups:
                     # Skip if same residue
@@ -96,6 +110,7 @@ class NPiStarDetector:
                         
                         # Check if angle is close to optimal 102° (within tolerance)
                         if abs(angle - self.optimal_angle) <= self.angle_tolerance:
+                            candidate_pairs += 1
                             strength = self._classify_interaction_strength(distance, angle)
                             
                             interaction = NPiStarInteraction(
@@ -117,6 +132,124 @@ class NPiStarDetector:
         except Exception as e:
             logger.error(f"Error detecting n→π* interactions: {e}")
         
+        t_eval_end = _t.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=len(interactions),
+            core_pair_generation=False,
+            extra={
+                'donors': len(donor_atoms) if 'donor_atoms' in locals() else 0,
+                'carbonyl_groups': len(carbonyl_groups) if 'carbonyl_groups' in locals() else 0,
+                'candidate_density': (candidate_pairs/raw_pairs) if raw_pairs else 0.0
+            }
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=0.0,
+            eval_seconds=(t_eval_end - t_pair_start),
+            build_seconds=0.0
+        )
+        return interactions
+
+    def _vector_detect(self, structure: Structure.Structure) -> List[NPiStarInteraction]:
+        interactions: List[NPiStarInteraction] = []
+        import time as _t
+        t_pair_start = _t.time()
+        try:
+            model = structure[0]
+        except Exception:
+            self.instrumentation = {
+                'donors': 0,
+                'carbonyl_groups': 0,
+                'raw_pairs': 0,
+                'candidate_pairs': 0,
+                'accepted_pairs': 0,
+                'acceptance_ratio': 0.0,
+                'candidate_density': 0.0,
+                'core_pair_generation': False
+            }
+            return interactions
+        donor_atoms = self._find_lone_pair_donors(model)
+        carbonyl_groups = self._find_carbonyl_groups(model)
+        if not donor_atoms or not carbonyl_groups:
+            self.instrumentation = {
+                'donors': len(donor_atoms),
+                'carbonyl_groups': len(carbonyl_groups),
+                'raw_pairs': 0,
+                'candidate_pairs': 0,
+                'accepted_pairs': 0,
+                'acceptance_ratio': 0.0,
+                'candidate_density': 0.0,
+                'core_pair_generation': False
+            }
+            return interactions
+        donor_coords = np.vstack([d['atom'].get_coord() for d in donor_atoms]).astype('float32')
+        carbon_coords = np.vstack([c['carbon'].get_coord() for c in carbonyl_groups]).astype('float32')
+        try:
+            di, ci = pairwise_within_cutoff(donor_coords, carbon_coords, self.distance_cutoff, use_kdtree=True)
+            core = True
+        except Exception:  # pragma: no cover
+            diff = donor_coords[:, None, :] - carbon_coords[None, :, :]
+            dist2 = np.sum(diff*diff, axis=-1)
+            mask = dist2 <= (self.distance_cutoff ** 2)
+            di, ci = np.where(mask)
+            di = di.astype('int32'); ci = ci.astype('int32')
+            core = False
+        raw_pairs = int(donor_coords.shape[0] * carbon_coords.shape[0])
+        t_pair_end = _t.time()
+        t_eval_start = t_pair_end
+        candidate_pairs = int(len(di))
+        accepted = 0
+        for idx in range(candidate_pairs):
+            d_idx = int(di[idx]); c_idx = int(ci[idx])
+            donor_info = donor_atoms[d_idx]
+            carbonyl_info = carbonyl_groups[c_idx]
+            if donor_info['residue'] == carbonyl_info['residue']:
+                continue
+            donor_atom = donor_info['atom']
+            carbon_atom = carbonyl_info['carbon']
+            oxygen_atom = carbonyl_info['oxygen']
+            # Exact distance (we already know within cutoff)
+            distance = float(np.linalg.norm(donor_atom.get_coord() - carbon_atom.get_coord()))
+            # Bürgi-Dunitz angle
+            angle = self._calculate_burgi_dunitz_angle(donor_atom, oxygen_atom, carbon_atom)
+            optimal_angle = 107.0
+            if abs(angle - optimal_angle) > 25.0:
+                continue
+            strength = self._classify_interaction_strength(distance, angle)
+            interactions.append(NPiStarInteraction(
+                donor_atom=donor_atom,
+                acceptor_atom=oxygen_atom,
+                carbonyl_carbon=carbon_atom,
+                distance=distance,
+                angle=angle,
+                strength=strength,
+                donor_residue=f"{donor_info['resname']}{donor_info['res_id'][1]}",
+                acceptor_residue=f"{carbonyl_info['resname']}{carbonyl_info['res_id'][1]}",
+                donor_chain=donor_info['chain_id'],
+                acceptor_chain=carbonyl_info['chain_id']
+            ))
+            accepted += 1
+        t_eval_end = _t.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=accepted,
+            core_pair_generation=core,
+            extra={
+                'donors': len(donor_atoms),
+                'carbonyl_groups': len(carbonyl_groups),
+                'candidate_density': (candidate_pairs / raw_pairs) if raw_pairs else 0.0
+            }
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=(t_pair_end - t_pair_start),
+            eval_seconds=(t_eval_end - t_eval_start),
+            build_seconds=0.0
+        )
+        logger.info(f"n→π*[vector]{'/core' if core else ''}: {accepted} raw={raw_pairs} pruned={candidate_pairs} acc={self.instrumentation['acceptance_ratio']:.3f}")
         return interactions
     
     def _find_lone_pair_donors(self, model) -> List[Dict[str, Any]]:

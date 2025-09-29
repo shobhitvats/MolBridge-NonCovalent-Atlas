@@ -4,10 +4,14 @@ Detects X (Cl, Br, I) σ-hole donors with nucleophilic acceptors, X...acceptor <
 """
 
 import numpy as np
+import time
+from utils.angle_utils import angles_between
 from typing import List, Dict, Any, Optional
 from Bio.PDB import Structure, Atom, Residue
 from dataclasses import dataclass
+from utils.settings import get_settings
 from loguru import logger
+from utils.instrumentation import init_funnel, update_counts, finalize_funnel
 
 @dataclass
 class HalogenBond:
@@ -23,6 +27,9 @@ class HalogenBond:
     acceptor_chain: str
     halogen_type: str  # Cl, Br, I
 
+from .base_detector import register_detector
+
+@register_detector("halogenbond", method="detect_halogen_bonds")
 class HalogenBondDetector:
     """Detects halogen bonds in protein structures."""
     
@@ -73,39 +80,140 @@ class HalogenBondDetector:
         }
     
     def detect_halogen_bonds(self, structure: Structure.Structure) -> List[HalogenBond]:
-        """
-        Detect all halogen bonds in the structure.
-        
-        Args:
-            structure: Biopython Structure object
-            
-        Returns:
-            List of HalogenBond objects
-        """
-        halogen_bonds = []
-        
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:
+                return self._legacy_detect(structure)
+        return self._legacy_detect(structure)
+
+    def _legacy_detect(self, structure: Structure.Structure) -> List[HalogenBond]:
+        t_pair_start = time.time()
         try:
-            model = structure[0]  # Use first model
-            
-            # Get all halogen atoms and acceptors
-            halogens = self._get_halogen_atoms(model)
-            acceptors = self._get_acceptors(model)
-            
-            logger.info(f"Found {len(halogens)} halogen atoms and {len(acceptors)} potential acceptors")
-            
-            # Check all halogen-acceptor pairs
-            for halogen_info in halogens:
-                for acceptor_info in acceptors:
-                    halogen_bond = self._check_halogen_bond(halogen_info, acceptor_info)
-                    if halogen_bond:
-                        halogen_bonds.append(halogen_bond)
-            
-            logger.info(f"Detected {len(halogen_bonds)} halogen bonds")
-            
-        except Exception as e:
-            logger.error(f"Error detecting halogen bonds: {e}")
-        
-        return halogen_bonds
+            model = structure[0]
+        except Exception:
+            return []
+        halogens = self._get_halogen_atoms(model)
+        acceptors = self._get_acceptors(model)
+        t_pair_end = time.time()
+        t_eval_start = t_pair_end
+        bonds: List[HalogenBond] = []
+        for h in halogens:
+            for a in acceptors:
+                hb = self._check_halogen_bond(h, a)
+                if hb:
+                    bonds.append(hb)
+        t_eval_end = time.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=len(halogens)*len(acceptors),
+            candidate_pairs=len(halogens)*len(acceptors),
+            accepted_pairs=len(bonds),
+            core_pair_generation=False,
+            extra={
+                'halogens': len(halogens),
+                'acceptors': len(acceptors)
+            }
+        )
+        finalize_funnel(self.instrumentation,
+                         pair_gen_seconds=(t_pair_end - t_pair_start),
+                         eval_seconds=(t_eval_end - t_eval_start),
+                         build_seconds=0.0)
+        logger.info(f"[legacy] Halogen bonds: {len(bonds)}")
+        return bonds
+
+    def _vector_detect(self, structure: Structure.Structure) -> List[HalogenBond]:
+        bonds: List[HalogenBond] = []
+        t_pair_start = time.time()
+        try:
+            model = structure[0]
+        except Exception:
+            return bonds
+        halogens = self._get_halogen_atoms(model)
+        acceptors = self._get_acceptors(model)
+        if not halogens or not acceptors:
+            return bonds
+        max_cut = 3.6  # Upper distance bound ~3.6 Å
+        core = False
+        hi_list = []
+        ai_list = []
+        try:
+            # Use shared FeatureStore neighbor pairs
+            from analysis.feature_store import get_feature_store
+            fs = get_feature_store()
+            all_coords = fs.ensure_coords(structure)
+            if all_coords is not None and all_coords.size:
+                atom_index = {id(atom): idx for idx, atom in enumerate(structure.get_atoms())}  # type: ignore
+                hal_idx = [atom_index.get(id(h['atom'])) for h in halogens]
+                acc_idx = [atom_index.get(id(a['atom'])) for a in acceptors]
+                hal_map = {g:i for i,g in enumerate(hal_idx)}
+                acc_map = {g:i for i,g in enumerate(acc_idx)}
+                neighbor_pairs = fs.neighbor_within(structure, float(max_cut))
+                if neighbor_pairs:
+                    for i,j in neighbor_pairs:
+                        if i in hal_map and j in acc_map:
+                            hi_list.append(hal_map[i]); ai_list.append(acc_map[j])
+                        elif j in hal_map and i in acc_map:
+                            hi_list.append(hal_map[j]); ai_list.append(acc_map[i])
+                    core = True
+        except Exception:
+            pass
+        if not hi_list:
+            # fallback pair distance broadcast minimal version
+            h_coords = np.vstack([h['atom'].get_coord() for h in halogens]).astype('float32')
+            a_coords = np.vstack([a['atom'].get_coord() for a in acceptors]).astype('float32')
+            diff = h_coords[:, None, :] - a_coords[None, :, :]
+            dist_mat = np.linalg.norm(diff, axis=-1)
+            ii, jj = np.where(dist_mat <= max_cut)
+            hi_list = ii.astype('int32').tolist(); ai_list = jj.astype('int32').tolist()
+        t_pair_end = time.time()
+        t_eval_start = t_pair_end
+        # Pre-compute carbon->halogen vectors for angle calc
+        c2h_vecs = []
+        for h_idx in range(len(halogens)):
+            carbon_atom = halogens[h_idx]['carbon_atom']
+            if carbon_atom is not None:
+                c2h_vecs.append(halogens[h_idx]['atom'].get_coord() - carbon_atom.get_coord())
+            else:
+                c2h_vecs.append(np.array([0.0,0.0,0.0]))
+        c2h_arr = np.vstack(c2h_vecs).astype('float32') if c2h_vecs else np.zeros((0,3),dtype='float32')
+        accepted = 0
+        for h_i, a_i in zip(hi_list, ai_list):
+            carbon_vec = c2h_arr[h_i]
+            h_coord = halogens[h_i]['atom'].get_coord()
+            a_coord = acceptors[a_i]['atom'].get_coord()
+            h2a_vec = a_coord - h_coord
+            # Angle between carbon->halogen and halogen->acceptor
+            if np.linalg.norm(carbon_vec) > 1e-6 and np.linalg.norm(h2a_vec) > 1e-6:
+                cos_angle = np.dot(carbon_vec, h2a_vec) / (np.linalg.norm(carbon_vec)*np.linalg.norm(h2a_vec))
+                cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                angle_val = float(np.degrees(np.arccos(cos_angle)))
+            else:
+                angle_val = 180.0
+            if angle_val < self.angle_cutoff:
+                continue
+            hb = self._check_halogen_bond(halogens[h_i], acceptors[a_i])
+            if hb:
+                bonds.append(hb); accepted += 1
+        t_eval_end = time.time()
+        raw_pairs = len(halogens) * len(acceptors)
+        candidate_pairs = len(hi_list)
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=accepted,
+            core_pair_generation=core,
+            extra={
+                'halogens': len(halogens),
+                'acceptors': len(acceptors)
+            }
+        )
+        finalize_funnel(self.instrumentation,
+                         pair_gen_seconds=(t_pair_end - t_pair_start),
+                         eval_seconds=(t_eval_end - t_eval_start),
+                         build_seconds=0.0)
+        logger.info(f"[vector]{'/core' if core else ''} Halogen bonds: {accepted} (raw={raw_pairs} pruned={candidate_pairs} acc_ratio={self.instrumentation['acceptance_ratio']:.3f})")
+        return bonds
     
     def _get_halogen_atoms(self, model) -> List[Dict[str, Any]]:
         """Get all halogen atoms in the structure."""

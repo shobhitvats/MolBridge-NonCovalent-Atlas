@@ -1,0 +1,80 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs & reports
+*.log
+logs/
+*.coverage
+coverage.xml
+
+# Local cache / manifests
+cache/
+*.manifest.json
+
+# Streamlit & runtime
+.streamlit/cache/
+.streamlit/secrets.toml
+.cache/
+cache/
+cache/**
+!/cache/README.md
+
+# Logs & debug
+*.log
+logs/
+microbench_baseline.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Reports / exports
+*.zip
+*.tar.gz
+
+# Session artifacts
+sessions/
+**/sessions/
+
+# Temp files
+*.tmp
+*.bak
+*~
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Node (if any future frontend assets)
+node_modules/
+
+# Local overrides
+local_settings.py

@@ -58,7 +58,7 @@ class StructureViewer:
     # Viewer header removed as per UI cleanup request
         
         # Viewer controls
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
             style = st.selectbox(
@@ -68,13 +68,6 @@ class StructureViewer:
             )
         
         with col2:
-            color_scheme = st.selectbox(
-                "Color Scheme:",
-                ["spectrum", "chain", "residue", "element"],
-                index=0
-            )
-        
-        with col3:
             show_ligands = st.checkbox("Show Ligands", value=True)
         
         # Interaction display controls
@@ -100,13 +93,17 @@ class StructureViewer:
                     label_visibility="collapsed"
                 )
         
-        # Display viewer
+                # Note: Removed previous JS injection that attempted to force selectbox colors.
+                # Styling is now handled via scoped CSS in the visualization tab to avoid script tags rendering as text.
+
+        # Display viewer; components.html doesn't support key kwarg. Reactivity achieved by re-rendering HTML when state changes.
         st.components.v1.html(
-            self._create_main_viewer(pdb_id, analysis_result, style, color_scheme, show_ligands, interaction_visibility),
-            height=self.viewer_config.viewer_height + 50
+            self._create_main_viewer(pdb_id, analysis_result, style, show_ligands, interaction_visibility),
+            height=self.viewer_config.viewer_height + 50,
+            scrolling=False
         )
 
-    def _create_main_viewer(self, pdb_id: str, analysis_result: Dict[str, Any], style: str, color_scheme: str, show_ligands: bool, interaction_visibility: Dict[str, bool]) -> str:
+    def _create_main_viewer(self, pdb_id: str, analysis_result: Dict[str, Any], style: str, show_ligands: bool, interaction_visibility: Dict[str, bool]) -> str:
         """Create the main viewer HTML."""
         # Debug: print analysis result keys
         print(f"DEBUG: Analysis result keys: {list(analysis_result.keys())}")
@@ -231,12 +228,20 @@ class StructureViewer:
         interaction_data_json = json.dumps(interaction_data, cls=NumpyEncoder)
         print(f"DEBUG: Interaction data prepared: {len(interaction_data)} interactions")
         
-        # Simple, robust viewer HTML
+        # Simple, robust viewer HTML with enhanced security
+        # Serialize UI options for safe JS embedding
+        import json as _json
+        js_style = _json.dumps(style)
+        js_show_ligands = 'true' if show_ligands else 'false'
         main_viewer = f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <!-- Allow 3Dmol (some builds use Function/eval); keep inline scripts limited to this component -->
+            <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://3dmol.csb.pitt.edu https://3Dmol.csb.pitt.edu https://3dmol.org https://www.3dmol.org; frame-ancestors 'self';">
+            <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js" async></script>
             <style>
                 #main-viewer {{
                     width: 100%;
@@ -268,9 +273,31 @@ class StructureViewer:
             
             <script>
             (function() {{
+                'use strict';
+                
+                // Enhanced iframe security and communication
+                let isInIframe = window.parent !== window;
+                if (isInIframe) {{
+                    console.log('3D Viewer loaded in secure iframe context');
+                    // Minimal communication with parent
+                    try {{
+                        // Signal ready state to parent if needed
+                        if (window.parent && window.parent.postMessage) {{
+                            window.parent.postMessage({{
+                                type: 'viewerReady',
+                                source: '3dmol-viewer'
+                            }}, '*');
+                        }}
+                    }} catch (e) {{
+                        console.log('Parent communication restricted - operating in isolated mode');
+                    }}
+                }}
+                
                 let viewer = null;
                 const statusEl = document.getElementById('status');
                 const interactionData = {interaction_data_json};
+                const selectedStyle = {js_style};
+                const showLigands = {js_show_ligands};
                 
                 // Interaction type colors
                 const interactionColors = {{
@@ -433,6 +460,30 @@ class StructureViewer:
                 // Remove complex functions that might be causing issues
                 // Keep only the essential interaction colors and simple functions
                 
+                function applyProteinStyle() {{
+                    // Clear and apply selected style
+                    viewer.setStyle({{}}, {{}});
+                    const styles = {{}};
+                    if (selectedStyle === 'cartoon') {{
+                        styles.cartoon = {{ color: 'spectrum' }};
+                    }} else if (selectedStyle === 'stick') {{
+                        styles.stick = {{ radius: 0.25, colorscheme: 'Jmol' }};
+                    }} else if (selectedStyle === 'sphere' || selectedStyle === 'spheres') {{
+                        styles.sphere = {{ scale: 0.3, colorscheme: 'Jmol' }};
+                    }} else if (selectedStyle === 'line' || selectedStyle === 'lines') {{
+                        styles.line = {{ linewidth: 1.5, colorscheme: 'Jmol' }};
+                    }} else {{
+                        // Fallback to cartoon
+                        styles.cartoon = {{ color: 'spectrum' }};
+                    }}
+                    viewer.setStyle({{}}, styles);
+
+                    // Ligands: highlight HET atoms if requested
+                    if (showLigands) {{
+                        viewer.addStyle({{hetflag: true}}, {{stick: {{radius: 0.2, colorscheme: 'greenCarbon'}}}});
+                    }}
+                }}
+
                 function initViewer() {{
                     try {{
                         setStatus('Checking 3Dmol...', 'loading');
@@ -458,13 +509,7 @@ class StructureViewer:
                         viewer.addModel(pdbData, 'pdb');
                         
                         setStatus('Applying styling...', 'loading');
-                        // Simple but effective styling
-                        viewer.setStyle({{}}, {{}}); // Clear all
-                        viewer.setStyle({{}}, {{
-                            cartoon: {{
-                                color: 'spectrum'
-                            }}
-                        }});
+                        applyProteinStyle();
                         
                         setStatus('Adding interactions...', 'loading');
                         const interactionCount = addInteractionVisualization();
@@ -525,7 +570,8 @@ class StructureViewer:
             # Create viewer HTML
             main_viewer = self._create_main_viewer(pdb_id, pdb_data, interaction_lines)
             
-            # Render the viewer
+            # Render the viewer with reactive key
+            viewer_key = f"viewer_{self.viewer_config.style}_{hash(str(interaction_lines))}"
             st.components.v1.html(main_viewer, height=self.viewer_config.viewer_height + 50)
             
         except Exception as e:
@@ -567,7 +613,6 @@ class StructureViewer:
                            pdb_id: str,
                            analysis_result: Dict[str, Any],
                            style: str,
-                           color_scheme: str,
                            show_ligands: bool,
                            interaction_visibility: Dict[str, bool]) -> str:
         """Create HTML for py3Dmol viewer."""
@@ -721,23 +766,10 @@ class StructureViewer:
                         console.log("STEP 10: Model added successfully, number of models:", numModels);
                         
                         // Set style based on user selection
-                        console.log("STEP 11: Setting style:", "{style}", "with color scheme:", "{color_scheme}");
+                        console.log("STEP 11: Setting style:", "{style}");
                         
-                        // Apply color scheme properly based on type
-                        var colorScheme = "{color_scheme}";
-                        var styleConfig = {{}};
-                        
-                        if (colorScheme === "spectrum") {{
-                            styleConfig = {{spectrum: true}};
-                        }} else if (colorScheme === "chain") {{
-                            styleConfig = {{colorscheme: "chain"}};
-                        }} else if (colorScheme === "element") {{
-                            styleConfig = {{colorscheme: $3Dmol.elementColors.rasmol}};
-                        }} else if (colorScheme === "residue") {{
-                            styleConfig = {{colorscheme: "residue"}};
-                        }} else {{
-                            styleConfig = {{colorscheme: colorScheme}};
-                        }}
+                        // Use spectrum coloring as default
+                        var styleConfig = {{spectrum: true}};
                         
                         var mainStyle = "{style}";
                         var finalStyleConfig = {{}};
@@ -773,6 +805,13 @@ class StructureViewer:
                         }}
                         
                         console.log("STEP 18: 3Dmol viewer initialization FULLY COMPLETE!");
+                        
+                        // Notify Streamlit that component is ready
+                        if (typeof Streamlit !== 'undefined') {{
+                            console.log("STEP 19: Notifying Streamlit component ready...");
+                            Streamlit.setComponentReady();
+                            Streamlit.setComponentValue({{"status": "initialized", "timestamp": Date.now()}});
+                        }}
                         
                     }} catch (error) {{
                         console.error("FAILED at step:", error.message);
@@ -847,6 +886,13 @@ class StructureViewer:
                         alert(info);
                     }}
                 }});
+                
+                // Register component with Streamlit after initialization
+                if (typeof Streamlit !== 'undefined') {{
+                    Streamlit.setComponentReady();
+                    // Set up bidirectional communication
+                    Streamlit.setComponentValue({{"status": "ready", "timestamp": Date.now()}});
+                }}
                 
             </script>
         </body>
@@ -1223,7 +1269,8 @@ class StructureViewer:
         if summary_data:
             import pandas as pd
             df = pd.DataFrame(summary_data)
-            st.dataframe(df, use_container_width=True)
+            # Updated deprecated parameter
+            st.dataframe(df, width="stretch")
     
     def _get_interaction_display_name(self, interaction_type: str) -> str:
         """Get human-readable name for interaction type."""

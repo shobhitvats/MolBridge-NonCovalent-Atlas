@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-perf:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '${{ matrix.python-version }}'
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Optional perf extras if declared
+          pip install pytest pytest-benchmark psutil
+      - name: Run tests
+        env:
+          MOLBRIDGE_ENABLE_VECTOR_GEOM: '1'
+        run: |
+          pytest -q --disable-warnings --maxfail=1
+      - name: Security scan (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt || true
+      - name: Container build smoke test
+        run: |
+          docker build -t molbridge-ci .
+      - name: Run microbenchmark (generate p95 timing & acceptance ratios)
+        env:
+          MOLBRIDGE_ENABLE_VECTOR_GEOM: '1'
+          MOLBRIDGE_ADAPTIVE_CACHE_PATH: '.cache/adaptive_thresholds.json'
+        run: |
+          mkdir -p .cache || true
+          python -m performance.microbench > microbench.json || echo '{}' > microbench.json
+      - name: Download previous microbench baseline artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          name: microbench-baseline
+          path: prev_microbench
+        continue-on-error: true
+      - name: Microbench regression gate (p95 & acceptance)
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -f prev_microbench/microbench.json ]; then
+            echo 'Previous microbench baseline found. Running gate.'
+            python -m performance.bench_regression_gate microbench.json --baseline prev_microbench/microbench.json --max-p95-growth 1.35 --strict-accept || (echo 'Microbench regression detected' && exit 1)
+          else
+            echo 'No previous microbench baseline available; treating current run as provisional baseline.'
+          fi
+      - name: Upload microbench artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: microbench-baseline
+          path: microbench.json
+          if-no-files-found: warn
+      - name: Generate golden snapshot (if baseline not present)
+        id: golden
+        run: |
+          SNAPSHOT=golden_baseline.json
+          if [ ! -f $SNAPSHOT ]; then
+            if [ -f docs/curated_golden_list.txt ]; then
+              python -m cli_golden snapshot --output $SNAPSHOT --list-file docs/curated_golden_list.txt || echo 'snapshot skipped'
+            else
+              python -m cli_golden snapshot --output $SNAPSHOT || echo 'snapshot skipped'
+            fi
+          fi
+          echo "snapshot=$SNAPSHOT" >> $GITHUB_OUTPUT
+      - name: Download previous golden baseline artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+            name: golden-baseline
+            path: prev_baseline
+        continue-on-error: true
+      - name: Compare with previous baseline (if available)
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -f prev_baseline/golden_baseline.json ]; then
+            echo 'Previous baseline found. Running regression check against it.'
+            python scripts/perf_regression_check.py --baseline prev_baseline/golden_baseline.json --pdb 1CRN 4HHB 2VXN || echo 'Regression (counts/timing) flagged'
+          else
+            echo 'No previous baseline artifact found.'
+          fi
+      - name: Upload golden snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-baseline
+          path: golden_baseline.json
+          if-no-files-found: warn
+      - name: Run metrics aggregation (JSON + CSV)
+        run: |
+          if [ -f metrics.jsonl ]; then
+            python -m cli_metrics summarize --file metrics.jsonl --out metrics_summary.json || true
+            python -m cli_metrics export-csv --file metrics.jsonl --out metrics_summary.csv || true
+          fi
+      - name: Upload metrics artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-metrics
+          path: |
+            metrics_summary.json
+            metrics_summary.csv
+          if-no-files-found: ignore
+      - name: Enforce self-baseline timing & count drift (strict gate)
+        run: |
+          set -e
+          python scripts/perf_regression_check.py --baseline golden_baseline.json --pdb 1CRN 4HHB 2VXN --time-tolerance 0.35 || (echo 'Performance regression detected' && exit 1)

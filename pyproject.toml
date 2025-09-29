@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molbridge"
+version = "1.1.0"
+description = "MolBridge - Protein Noncovalent Interaction Analysis (Streamlit App)"
+authors = [ { name = "Your Name", email = "you@example.com" } ]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["bioinformatics", "protein", "structural-biology", "noncovalent-interactions"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+# Dependencies mirrored from requirements.txt will still be installed via pip - keep minimal here if desired
+# You can optionally sync this list later.
+dependencies = [
+  "streamlit",
+  "pandas",
+  "numpy",
+  "requests",
+  "diskcache",
+  "python-dotenv",
+  "loguru",
+  "pydantic"
+]
+
+[project.optional-dependencies]
+visualization = ["plotly", "matplotlib", "seaborn"]
+performance = ["tqdm", "numba", "scipy"]
+profiling = ["pytest-benchmark", "scalene"]
+dev-rust = ["maturin>=1.5"]
+
+[project.scripts]
+molbridge = "cli:main"
+molbridge-microbench = "performance.microbench:run_microbench"
+molbridge-bench-gate = "performance.bench_regression_gate:main"
+molbridge-perf-check = "scripts.perf_regression_check:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+addopts = "-q"
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+
+# Optional: build Rust extension (run manually)
+#   maturin build --release -m rust/Cargo.toml
+# Or for in-place dev: maturin develop -m rust/Cargo.toml

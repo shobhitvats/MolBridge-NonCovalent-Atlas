@@ -1,0 +1,21 @@
+/* Base shared styles extracted from inline definitions */
+body, .stApp { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+
+/* Cards */
+.glass-card { border-radius: 1.5rem; padding: 2.5rem 2rem 2rem 2rem; margin-bottom: 2.5rem; }
+
+/* Buttons */
+.gradient-btn button, .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+  border-radius: 12px !important; font-weight: 800 !important; font-size: 1.13rem !important;
+  border: none !important; padding: 0.7rem 1.7rem !important; margin: 0.2rem; letter-spacing: 0.02em;
+  transition: background 0.3s, box-shadow 0.3s, transform 0.15s;
+}
+
+/* Inputs */
+.stSelectbox>div>div, .stMultiSelect>div>div, .stTextInput>div>input, .stTextArea>div>textarea {
+  border-radius: 10px !important; font-size: 0.96rem !important; min-height: 40px !important;
+}
+
+/* Section headers */
+.section-header { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.2rem; display: flex; gap: 0.7rem; }
+.section-divider { height: 2px; border: none; margin: 2.5rem 0 2rem 0; border-radius: 2px; }

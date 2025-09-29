@@ -3,8 +3,9 @@ REST API endpoints for Protein Interaction Explorer.
 Provides programmatic access to analysis capabilities.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Query, Request
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Union
@@ -20,6 +21,15 @@ from utils.config import AppConfig, InteractionConfig
 from utils.pdb_handler import PDBHandler
 from utils.cache import CacheManager
 from reporting.report_generator import ReportGenerator
+from utils.settings import get_settings
+from math import isnan
+from utils.instrumentation_snapshot import collect_snapshot
+from utils.normalization import normalize_detector_output
+from utils import kdtree_thresholds as kt
+try:
+    from performance.timing import TIMINGS  # type: ignore
+except Exception:  # pragma: no cover
+    TIMINGS = None  # type: ignore
 
 # Initialize app
 app = FastAPI(
@@ -36,6 +46,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Optional GZip compression (env driven)
+try:
+    _s = get_settings()
+    if getattr(_s, 'api_enable_gzip', False):
+        app.add_middleware(GZipMiddleware, minimum_size=getattr(_s, 'api_gzip_min_size', 1024))
+except Exception:
+    pass
 
 # Global configuration
 config = AppConfig()
@@ -58,6 +76,8 @@ class AnalysisRequest(BaseModel):
     force_refresh: bool = Field(default=False, description="Force refresh of cached data")
     include_metadata: bool = Field(default=True, description="Include structure metadata")
     config_preset: str = Field(default="literature_default", description="Configuration preset")
+    precision: Optional[int] = Field(default=None, ge=0, le=6, description="Optional float precision for numeric trimming in result payload")
+    include_normalized: bool = Field(default=False, description="Eagerly compute normalized interactions during analysis (otherwise add ?include_normalized=1 at retrieval to lazily generate)")
 
 class ConfigurationUpdate(BaseModel):
     interaction_config: Optional[Dict[str, Any]] = None
@@ -183,7 +203,11 @@ async def get_job_status(job_id: str):
     return JobStatus(**job_info)
 
 @app.get("/results/{job_id}", tags=["Analysis"])
-async def get_analysis_results(job_id: str):
+async def get_analysis_results(
+    job_id: str,
+    precision: int = Query(None, ge=0, le=6, description="Optional float precision override"),
+    include_normalized: int = Query(0, ge=0, le=1, description="Set to 1 to include normalized interactions if available")
+):
     """Get complete results from a finished analysis job."""
     if job_id not in active_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -191,6 +215,63 @@ async def get_analysis_results(job_id: str):
     job_info = active_jobs[job_id]
     
     if job_info["status"] == "completed":
+        # Optional precision trimming (only numeric floats inside interaction dict lists)
+        if precision is not None:
+            try:
+                def _trim(val):
+                    if isinstance(val, float) and not isnan(val):
+                        fmt = f"{{:.{precision}f}}"
+                        return float(fmt.format(val))
+                    if isinstance(val, list):
+                        return [_trim(v) for v in val]
+                    if isinstance(val, dict):
+                        return {k: _trim(v) for k, v in val.items()}
+                    return val
+                res_cp = {}
+                for pid, pdata in job_info["results"].items():
+                    base = _trim(pdata)
+                    if include_normalized != 1 and isinstance(base, dict) and 'interactions_normalized' in base:
+                        # Remove normalized block unless explicitly requested
+                        base = dict(base)
+                        base.pop('interactions_normalized', None)
+                    res_cp[pid] = base
+                return res_cp
+            except Exception:
+                # Fallback silently to original
+                return job_info["results"]
+        # If normalization excluded, strip normalized unless requested
+        if include_normalized != 1:
+            try:
+                slim = {}
+                for pid, pdata in job_info["results"].items():
+                    if isinstance(pdata, dict) and 'interactions_normalized' in pdata:
+                        q = dict(pdata)
+                        q.pop('interactions_normalized', None)
+                        slim[pid] = q
+                    else:
+                        slim[pid] = pdata
+                return slim
+            except Exception:
+                return job_info["results"]
+        # include_normalized requested; if missing generate lazily on-demand
+        try:
+            updated = False
+            for pid, pdata in job_info["results"].items():
+                if isinstance(pdata, dict) and 'interactions' in pdata and 'interactions_normalized' not in pdata:
+                    interactions = pdata.get('interactions', {})
+                    if isinstance(interactions, dict):
+                        norm_map = {}
+                        for k, v in interactions.items():
+                            try:
+                                norm_map[k] = normalize_detector_output(k, v)
+                            except Exception:
+                                norm_map[k] = []
+                        pdata['interactions_normalized'] = norm_map
+                        updated = True
+            if updated:
+                return job_info["results"]
+        except Exception:
+            pass
         return job_info["results"]
     elif job_info["status"] == "failed":
         raise HTTPException(status_code=500, detail=f"Analysis failed: {job_info['error']}")
@@ -398,6 +479,126 @@ async def get_cache_stats():
     """Get cache statistics and status."""
     return cache_manager.get_cache_stats()
 
+@app.get("/metrics", tags=["System"])
+async def metrics():
+    """Simple metrics endpoint (opt-in via MOLBRIDGE_METRICS_ENDPOINT)."""
+    settings = get_settings()
+    if not settings.enable_metrics_endpoint:
+        raise HTTPException(status_code=404, detail="Metrics endpoint disabled")
+    data = {
+        "cache": cache_manager.get_cache_stats(),
+    }
+    if TIMINGS is not None:
+        try:
+            data["timings"] = TIMINGS.snapshot()
+        except Exception:
+            pass
+    return data
+
+@app.get("/metrics/detectors", tags=["System"])
+async def detector_metrics():
+    """Return current detector instrumentation snapshot for the last processed batch/job.
+
+    If a job has completed most recently, its detectors instrumentation (if stored) is aggregated.
+    Falls back to the BatchProcessor's internal last detector instances if available.
+    """
+    settings = get_settings()
+    if not settings.enable_metrics_endpoint:
+        raise HTTPException(status_code=404, detail="Metrics endpoint disabled")
+    # Attempt to gather detectors from the most recent completed job
+    detectors = []
+    try:
+        # Choose the most recent completed job with results
+        completed = [j for j in active_jobs.values() if j.get('status') == 'completed' and j.get('results')]
+        completed.sort(key=lambda x: x.get('completed_at') or x.get('started_at'), reverse=True)
+        if completed:
+            # Results structure may hold per-pdb detectors list under a known key; attempt extraction
+            # Fallback: if results is a mapping of pdb_id -> interaction dict with instrumentation embedded, skip
+            pass
+    except Exception:
+        pass
+    # Fallback: attempt attribute on batch_processor
+    bp_dets = getattr(batch_processor, 'last_detectors', None)
+    if isinstance(bp_dets, (list, tuple)):
+        detectors.extend(bp_dets)
+    snapshot = collect_snapshot(detectors)
+    # Enrich with rolling acceptance + performance hints if available
+    bp = getattr(batch_processor, 'batch_processor', None) or getattr(batch_processor, 'processor', None)
+    # If unified processor path attaches attributes directly to batch_processor use those
+    hp = getattr(batch_processor, 'high_perf', None)
+    # Try common attribute names
+    candidate_objs = [batch_processor, bp, hp]
+    for obj in candidate_objs:
+        if not obj:
+            continue
+        rolling = getattr(obj, '_rolling_acceptance', None)
+        mean_ms = getattr(obj, '_last_detector_mean_ms', None)
+        adaptive_disabled = getattr(obj, '_adaptive_parallel_disabled', None)
+        if isinstance(rolling, dict):
+            snapshot.setdefault('rolling_acceptance', {})
+            for k, hist in rolling.items():
+                if isinstance(hist, list) and hist:
+                    snapshot['rolling_acceptance'][k] = {
+                        'window': len(hist),
+                        'mean': round(sum(hist)/len(hist), 6),
+                        'latest': hist[-1]
+                    }
+        if mean_ms is not None:
+            snapshot.setdefault('performance_hints', {})['mean_detector_ms_last_batch'] = round(float(mean_ms), 3)
+        if adaptive_disabled is not None:
+            snapshot.setdefault('performance_hints', {})['adaptive_parallel_disabled'] = bool(adaptive_disabled)
+    return snapshot
+
+@app.get("/metrics/kdtree_thresholds", tags=["System"])
+async def kdtree_threshold_metrics():
+    """Expose current KD-tree threshold configuration and adaptive state.
+
+    Returns per-key: default, current, adaptive (if different), last_density, last_reason.
+    Gated by metrics endpoint setting.
+    """
+    settings = get_settings()
+    if not settings.enable_metrics_endpoint:
+        raise HTTPException(status_code=404, detail="Metrics endpoint disabled")
+    # Introspect internal module state (best-effort; keys may change)
+    out = { 'thresholds': {}, 'timestamp': datetime.utcnow().isoformat() + 'Z' }
+    try:  # Access module internals (documented in utils.kdtree_thresholds)
+        defaults = getattr(kt, '_DEFAULTS', {})
+        adaptive = getattr(kt, '_ADAPTIVE', {})
+        densities = getattr(kt, '_LAST_DENSITY', {})
+        reasons = getattr(kt, '_REASONS', {})
+        for key in sorted(defaults.keys() | adaptive.keys() | densities.keys()):
+            current = kt.get_threshold(key)
+            out['thresholds'][key] = {
+                'default': defaults.get(key),
+                'current': current,
+                'adaptive_override': adaptive.get(key) if adaptive.get(key) != defaults.get(key) else None,
+                'last_density': densities.get(key),
+                'last_reason': reasons.get(key, 'unknown')
+            }
+    except Exception as e:  # pragma: no cover
+        out['error'] = str(e)
+    return out
+
+@app.get("/metrics/history", tags=["System"])
+async def metrics_history(limit: int = Query(50, ge=1, le=1000)):
+    """Return recent metrics history entries (ring buffer) captured by HighPerformanceBatchProcessor.
+
+    Includes per-batch detector acceptance ratios and counts. Gated by metrics endpoint flag.
+    """
+    settings = get_settings()
+    if not settings.enable_metrics_endpoint:
+        raise HTTPException(status_code=404, detail="Metrics endpoint disabled")
+    hp = getattr(batch_processor, 'high_perf', None)
+    candidates = [getattr(batch_processor, 'batch_processor', None), hp, batch_processor]
+    history = []
+    for obj in candidates:
+        if obj and hasattr(obj, '_metrics_history'):
+            history = getattr(obj, '_metrics_history') or []
+            break
+    if not history:
+        return { 'history': [], 'count': 0 }
+    return { 'history': history[-limit:], 'count': len(history) }
+
 @app.post("/cache/clear", tags=["System"])
 async def clear_cache():
     """Clear all cached data."""
@@ -416,22 +617,38 @@ async def run_analysis_job(job_id: str, request: AnalysisRequest):
         active_jobs[job_id]["status"] = "running"
         active_jobs[job_id]["message"] = "Analysis in progress"
         
-        # Run analysis
-        results = batch_processor.process_batch(
-            request.pdb_ids,
-            interaction_types=request.interaction_types,
-            use_cache=request.use_cache,
-            force_refresh=request.force_refresh,
-            include_metadata=request.include_metadata,
-            progress_callback=lambda progress, msg: update_job_progress(job_id, progress, msg)
-        )
+        # Prefetch structures asynchronously (reduces latency for multiple new PDB IDs)
+        try:
+            if hasattr(pdb_handler, 'fetch_multiple_pdbs'):
+                await pdb_handler.fetch_multiple_pdbs(request.pdb_ids)
+        except Exception:
+            pass
+        # Temporary runtime normalization flag (thread-global) only for this job
+        settings = get_settings()
+        prev_runtime_flag = getattr(settings, '_runtime_include_normalized', False)
+        try:
+            if request.include_normalized:
+                setattr(settings, '_runtime_include_normalized', True)
+            results = batch_processor.process_batch(
+                request.pdb_ids,
+                interaction_types=request.interaction_types,
+                use_cache=request.use_cache,
+                force_refresh=request.force_refresh,
+                include_metadata=request.include_metadata,
+                progress_callback=lambda progress, msg: update_job_progress(job_id, progress, msg)
+            )
+        finally:
+            # Restore prior state
+            setattr(settings, '_runtime_include_normalized', prev_runtime_flag)
         
         # Update job with results
         active_jobs[job_id]["status"] = "completed"
         active_jobs[job_id]["progress"] = 100.0
         active_jobs[job_id]["message"] = "Analysis completed successfully"
         active_jobs[job_id]["completed_at"] = datetime.now()
-        active_jobs[job_id]["results"] = results
+        active_jobs[job_id]["results"] = results  # store raw; precision trimming applied at retrieval if requested
+        if request.precision is not None:
+            active_jobs[job_id]["precision"] = request.precision
         
     except Exception as e:
         # Update job with error

@@ -4,10 +4,13 @@ Detects interactions involving pnictogen atoms (N, P, As) as electron acceptors.
 """
 
 import numpy as np
+from utils.angle_utils import angles_between
 from typing import List, Dict, Any, Optional
 from Bio.PDB import Structure, Atom, Residue
 from dataclasses import dataclass
+from utils.settings import get_settings
 from loguru import logger
+from utils.instrumentation import init_funnel, finalize_funnel
 
 @dataclass
 class PnictogenBond:
@@ -58,48 +61,117 @@ class PnictogenBondDetector:
         }
     
     def detect_pnictogen_bonds(self, structure: Structure.Structure) -> List[PnictogenBond]:
-        """Detect pnictogen bonds in structure."""
-        bonds = []
-        
-        # Get all atoms
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:
+                return self._legacy_detect(structure)
+        return self._legacy_detect(structure)
+
+    def _legacy_detect(self, structure: Structure.Structure) -> List[PnictogenBond]:
         atoms = list(structure.get_atoms())
-        
-        # Find pnictogen and acceptor atoms
         pnictogen_atoms = [atom for atom in atoms if atom.element in self.pnictogen_atoms]
         acceptor_atoms = [atom for atom in atoms if atom.element in self.acceptor_atoms]
-        
-        logger.info(f"Found {len(pnictogen_atoms)} pnictogen atoms and {len(acceptor_atoms)} potential acceptors")
-        
-        for pnictogen in pnictogen_atoms:
-            for acceptor in acceptor_atoms:
-                # Skip if same atom or same residue
-                if pnictogen == acceptor or pnictogen.get_parent() == acceptor.get_parent():
+        bonds: List[PnictogenBond] = []
+        for pn in pnictogen_atoms:
+            for ac in acceptor_atoms:
+                if pn == ac or pn.get_parent() == ac.get_parent():
                     continue
-                
-                distance = self._calculate_distance(pnictogen, acceptor)
-                vdw_sum = self.vdw_radii.get(pnictogen.element, 0) + self.vdw_radii.get(acceptor.element, 0)
-                
-                if distance <= vdw_sum:
-                    # Calculate angle (pnictogen-bond-acceptor)
-                    angle = self._calculate_pnictogen_angle(pnictogen, acceptor)
-                    
-                    if angle >= self.angle_cutoff:
-                        strength = self._classify_bond_strength(distance)
-                        
-                        bond = PnictogenBond(
-                            pnictogen_atom=pnictogen,
-                            acceptor_atom=acceptor,
-                            distance=distance,
-                            angle=angle,
-                            strength=strength,
-                            pnictogen_residue=f"{pnictogen.get_parent().get_resname()}{pnictogen.get_parent().id[1]}",
-                            acceptor_residue=f"{acceptor.get_parent().get_resname()}{acceptor.get_parent().id[1]}",
-                            pnictogen_chain=pnictogen.get_parent().get_parent().id,
-                            acceptor_chain=acceptor.get_parent().get_parent().id
-                        )
-                        bonds.append(bond)
-        
-        logger.info(f"Detected {len(bonds)} pnictogen bonds")
+                distance = float(np.linalg.norm(pn.coord - ac.coord))
+                max_vdw = self.vdw_radii.get(pn.element, 0) + self.vdw_radii.get(ac.element, 0)
+                if distance > max_vdw:
+                    continue
+                angle = self._calculate_pnictogen_angle(pn, ac)
+                if angle < self.angle_cutoff:
+                    continue
+                strength = self._classify_bond_strength(distance)
+                bonds.append(PnictogenBond(
+                    pnictogen_atom=pn,
+                    acceptor_atom=ac,
+                    distance=distance,
+                    angle=angle,
+                    strength=strength,
+                    pnictogen_residue=f"{pn.get_parent().get_resname()}{pn.get_parent().id[1]}",
+                    acceptor_residue=f"{ac.get_parent().get_resname()}{ac.get_parent().id[1]}",
+                    pnictogen_chain=pn.get_parent().get_parent().id,
+                    acceptor_chain=ac.get_parent().get_parent().id
+                ))
+        raw_pairs = len(pnictogen_atoms)*len(acceptor_atoms)
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=raw_pairs,
+            accepted_pairs=len(bonds),
+            core_pair_generation=False,
+            extra={
+                'pnictogens': len(pnictogen_atoms),
+                'acceptors': len(acceptor_atoms)
+            }
+        )
+        # Legacy path treats pair generation + eval as a single combined evaluation phase
+        finalize_funnel(self.instrumentation, pair_gen_seconds=0.0, eval_seconds=0.0, build_seconds=0.0)
+        logger.info(f"[legacy] Pnictogen bonds: {len(bonds)}")
+        return bonds
+
+    def _vector_detect(self, structure: Structure.Structure) -> List[PnictogenBond]:
+        bonds: List[PnictogenBond] = []
+        atoms = list(structure.get_atoms())
+        pnictogen_atoms = [atom for atom in atoms if atom.element in self.pnictogen_atoms]
+        acceptor_atoms = [atom for atom in atoms if atom.element in self.acceptor_atoms]
+        if not pnictogen_atoms or not acceptor_atoms:
+            return bonds
+        p_coords = np.vstack([a.get_coord() for a in pnictogen_atoms]).astype('float32')
+        a_coords = np.vstack([a.get_coord() for a in acceptor_atoms]).astype('float32')
+        # Use geometry core for distance candidate pruning (upper bound on varying vdW by using max combined)
+        max_combined = max(self.vdw_radii.get(pn.element, 0) for pn in pnictogen_atoms) + max(self.vdw_radii.get(ac.element, 0) for ac in acceptor_atoms)
+        try:
+            from geometry.core import pairwise_within_cutoff
+            pi, ai = pairwise_within_cutoff(p_coords, a_coords, float(max_combined), use_kdtree=True)
+            core = True
+        except Exception:
+            diff = p_coords[:, None, :] - a_coords[None, :, :]
+            dist_mat = np.linalg.norm(diff, axis=-1)
+            ii, jj = np.where(dist_mat <= max_combined)
+            pi, ai = ii.astype('int32'), jj.astype('int32')
+            core = False
+        raw_pairs = int(p_coords.shape[0] * a_coords.shape[0])
+        candidate_pairs = int(len(pi))
+        for idx, (p_i, a_i) in enumerate(zip(pi.tolist(), ai.tolist())):
+            pn = pnictogen_atoms[p_i]; ac = acceptor_atoms[a_i]
+            if pn == ac or pn.get_parent() == ac.get_parent():
+                continue
+            # Exact distance and vdW validation
+            d = float(np.linalg.norm(pn.coord - ac.coord))
+            max_allowed = self.vdw_radii.get(pn.element, 0) + self.vdw_radii.get(ac.element, 0)
+            if d > max_allowed:
+                continue
+            angle = self._calculate_pnictogen_angle(pn, ac)
+            if angle < self.angle_cutoff:
+                continue
+            bonds.append(PnictogenBond(
+                pnictogen_atom=pn,
+                acceptor_atom=ac,
+                distance=d,
+                angle=angle,
+                strength=self._classify_bond_strength(d),
+                pnictogen_residue=f"{pn.get_parent().get_resname()}{pn.get_parent().id[1]}",
+                acceptor_residue=f"{ac.get_parent().get_resname()}{ac.get_parent().id[1]}",
+                pnictogen_chain=pn.get_parent().get_parent().id,
+                acceptor_chain=ac.get_parent().get_parent().id
+            ))
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=len(bonds),
+            core_pair_generation=core,
+            extra={
+                'pnictogens': len(pnictogen_atoms),
+                'acceptors': len(acceptor_atoms),
+                'candidate_density': (candidate_pairs/raw_pairs) if raw_pairs else 0.0
+            }
+        )
+        finalize_funnel(self.instrumentation, pair_gen_seconds=0.0, eval_seconds=0.0, build_seconds=0.0)
+        logger.info(f"[vector]{'/core' if core else ''} Pnictogen bonds: {len(bonds)} (raw={raw_pairs} pruned={candidate_pairs} acc_ratio={self.instrumentation['acceptance_ratio']:.3f})")
         return bonds
     
     def _calculate_distance(self, atom1: Atom.Atom, atom2: Atom.Atom) -> float:

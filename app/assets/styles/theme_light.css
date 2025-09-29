@@ -1,0 +1,10 @@
+/* Light theme overrides */
+body, .stApp { background-color: #ffffff !important; color: #18191A !important; }
+.glass-card { background: #f5f6fa; box-shadow: 0 4px 24px 0 #0001; }
+.gradient-btn button, .stButton>button, .stDownloadButton>button, .stFormSubmitButton>button {
+  background: #00B4D8 !important; color: #ffffff !important; box-shadow: 0 2px 8px #00B4D850;
+}
+.gradient-btn button:hover, .stButton>button:hover, .stDownloadButton>button:hover, .stFormSubmitButton>button:hover {
+  background: #0090ad !important; box-shadow: 0 4px 16px #00B4D8aa; transform: translateY(-2px) scale(1.03);
+}
+.section-divider { background: linear-gradient(90deg, #00B4D8 0%, #ffffff 100%); }

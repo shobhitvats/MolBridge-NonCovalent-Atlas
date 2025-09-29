@@ -53,13 +53,11 @@ Repository Structure
 
 Top-level files
 - README.md: Features, installation, usage, REST API examples, deployment guides, troubleshooting.
-- requirements.txt: Full dependency set for local/dev.
-- requirements-prod.txt: Slimmer set for Streamlit Cloud prod (now includes streamlit-lottie).
+- requirements.txt: Single authoritative dependency list (prod + dev runtime). `requirements-prod.txt` removed to prevent drift.
 - Dockerfile: Container build for local/prod.
-- Procfile: Process definitions (e.g., web/worker if used by platforms like Heroku).
-- deploy.sh: Helper script for common deployment options.
-- start_server.sh: Convenience launcher for Streamlit.
-- tests and utilities: test_pdb_data.py, test_single_interaction.py, etc.
+- Procfile: Process definitions (Heroku-style) if needed by platform.
+- (Removed) deploy.sh / start_server.sh: Replaced by explicit README commands.
+- tests and utilities: Legacy ad-hoc tests replaced by structured suite under `src/tests/`.
 
 Key Components and Contracts
 1) Analysis Pipeline
@@ -135,8 +133,8 @@ How to Run
 - Docker: `docker build -t protein-explorer . && docker run -p 8501:8501 -p 8000:8000 protein-explorer`
 
 Deployment Notes
-- Streamlit Cloud: uses requirements-prod.txt (now includes streamlit-lottie). Set `server.py` as main.
-- Environment vars for production (see README): server settings, performance caps.
+- Streamlit Cloud / Docker: install from unified `requirements.txt`; set main file to `server.py`.
+- Environment vars for production (see README): server settings, performance & feature flags.
 
 Testing Notes
 - Contains basic tests/util scripts (e.g., simple_viewer_test.py, test_single_interaction.py). Extend with unit tests for detectors and integration tests for batch_processor and UI callbacks.

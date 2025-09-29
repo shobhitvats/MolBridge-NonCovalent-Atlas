@@ -10,6 +10,11 @@ from typing import List, Dict, Any, Optional, Tuple
 from Bio.PDB import Structure, Atom, Residue
 from dataclasses import dataclass
 from loguru import logger
+from utils.settings import get_settings
+import numpy as np
+from .base_detector import register_detector
+from geometry.core import pairwise_within_cutoff, norms
+from utils.instrumentation import init_funnel, update_counts, finalize_funnel
 
 @dataclass
 class TetrelBond:
@@ -26,6 +31,7 @@ class TetrelBond:
     tetrel_chain: str
     acceptor_chain: str
 
+@register_detector("tetrel_bond", method="detect_tetrel_bonds")
 class TetrelBondDetector:
     """Detects tetrel (carbon σ-hole) bonds in protein structures."""
     
@@ -87,6 +93,14 @@ class TetrelBondDetector:
         4. Exclude H-bonding: No H within vdW contact with acceptor
         5. Check Nc ratio: distance/vdW_sum ≤ 1.1
         """
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:  # pragma: no cover
+                pass
+        import time as _t
+        t_pair_start = _t.time()
         bonds = []
         
         try:
@@ -141,11 +155,148 @@ class TetrelBondDetector:
                 )
                 bonds.append(bond)
             
+            t_eval_end = _t.time()
             logger.info(f"Detected {len(bonds)} tetrel bonds")
+            self.instrumentation = init_funnel(
+                raw_pairs=len(candidate_pairs),
+                candidate_pairs=len(candidate_pairs),
+                accepted_pairs=len(bonds),
+                core_pair_generation=False
+            )
+            finalize_funnel(
+                self.instrumentation,
+                pair_gen_seconds=0.0,
+                eval_seconds=(t_eval_end - t_pair_start),
+                build_seconds=0.0
+            )
             
         except Exception as e:
             logger.error(f"Error detecting tetrel bonds: {e}")
         
+        return bonds
+
+    # ---- Vector candidate pruning (carbon vs acceptor distance matrix) ----
+    def _vector_detect(self, structure: Structure.Structure) -> List[TetrelBond]:
+        import time as _t
+        t_pair_start = _t.time()
+        bonds: List[TetrelBond] = []
+        try:
+            model = structure[0]
+        except Exception:
+            return bonds
+        carbon_atoms: List[Atom.Atom] = []
+        carbon_bond_vectors: List[np.ndarray] = []
+        for chain in model:
+            for residue in chain:
+                rname = residue.get_resname()
+                if rname in self.tetrel_residues:
+                    for an in self.tetrel_residues[rname]:
+                        if an in residue and residue[an].element == 'C':
+                            c_atom = residue[an]
+                            carbon_atoms.append(c_atom)
+                            bonded_vecs = []
+                            for at in residue:
+                                if at is not c_atom and at.element != 'H' and self._calculate_distance(c_atom, at) < 1.8:
+                                    bonded_vecs.append(at.get_coord() - c_atom.get_coord())
+                            carbon_bond_vectors.append(np.vstack(bonded_vecs) if bonded_vecs else np.zeros((0,3), dtype='float32'))
+        acceptor_atoms: List[Atom.Atom] = []
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    if atom.element in self.acceptor_elements:
+                        acceptor_atoms.append(atom)
+        if not carbon_atoms or not acceptor_atoms:
+            return bonds
+        c_coords = np.vstack([a.get_coord() for a in carbon_atoms]).astype('float32')
+        a_coords = np.vstack([a.get_coord() for a in acceptor_atoms]).astype('float32')
+        try:
+            ci_all, ai_all = pairwise_within_cutoff(c_coords, a_coords, self.distance_max, use_kdtree=True)
+            core = True
+        except Exception:  # pragma: no cover
+            diff = c_coords[:, None, :] - a_coords[None, :, :]
+            dist2 = np.sum(diff*diff, axis=-1)
+            mask = dist2 <= (self.distance_max ** 2)
+            ci_all, ai_all = np.where(mask)
+            ci_all = ci_all.astype('int32'); ai_all = ai_all.astype('int32')
+            core = False
+        t_pair_end = _t.time()
+        raw_pairs = int(c_coords.shape[0] * a_coords.shape[0])
+        vecs = a_coords[ai_all] - c_coords[ci_all]
+        dists = norms(vecs)
+        keep_mask = (dists >= self.distance_min) & (dists <= self.distance_max)
+        ci = ci_all[keep_mask]; ai = ai_all[keep_mask]; dists_kept = dists[keep_mask]
+        candidate_pairs = int(len(ci))
+        from utils.kdtree_thresholds import adapt_threshold, get_last_density
+        kdtree_used = (candidate_pairs / raw_pairs) < 0.55 if raw_pairs else False
+        new_thresh, changed, reason = adapt_threshold('tetrel', candidate_pairs, kdtree_used)
+        accepted = 0
+        t_eval_start = t_pair_end
+        for idx in range(candidate_pairs):
+            c_idx = int(ci[idx]); a_idx = int(ai[idx])
+            c_atom = carbon_atoms[c_idx]; a_atom = acceptor_atoms[a_idx]
+            if c_atom.get_parent() is a_atom.get_parent():
+                continue
+            distance = float(dists_kept[idx])
+            if not self._has_electron_withdrawing_environment(c_atom):
+                continue
+            nc_ratio = self._calculate_nc_ratio(c_atom, a_atom, distance)
+            if nc_ratio > self.nc_ratio_max:
+                continue
+            bonded_mat = carbon_bond_vectors[c_idx]
+            if bonded_mat.shape[0] == 0:
+                continue
+            vec_ca = (a_coords[a_idx] - c_coords[c_idx])
+            norm_vec = np.linalg.norm(vec_ca) or 1.0
+            unit_ca = vec_ca / norm_vec
+            bnorms = np.linalg.norm(bonded_mat, axis=1); bnorms[bnorms == 0] = 1.0
+            unit_cz = bonded_mat / bnorms[:, None]
+            dots = np.clip(np.dot(unit_cz, unit_ca), -1.0, 1.0)
+            acute = np.degrees(np.arccos(np.abs(dots)))
+            sigma_angles = 180.0 - acute
+            sigma_angles_sorted = np.sort(sigma_angles)[::-1]
+            theta1 = float(sigma_angles_sorted[0]) if sigma_angles_sorted.size else 0.0
+            theta2_val = float(sigma_angles_sorted[1]) if sigma_angles_sorted.size > 1 else None
+            if theta1 < self.angle_relaxed and (theta2_val is None or theta2_val < self.angle_relaxed):
+                continue
+            if self._has_competing_hbond(c_atom, a_atom):
+                continue
+            strength = self._classify_bond_strength(distance, theta1, nc_ratio)
+            bonds.append(TetrelBond(
+                tetrel_atom=c_atom,
+                acceptor_atom=a_atom,
+                distance=distance,
+                theta1_angle=theta1,
+                theta2_angle=theta2_val if theta2_val is not None else 0.0,
+                nc_ratio=nc_ratio,
+                strength=strength,
+                tetrel_residue=f"{c_atom.get_parent().get_resname()}{c_atom.get_parent().id[1]}",
+                acceptor_residue=f"{a_atom.get_parent().get_resname()}{a_atom.get_parent().id[1]}",
+                tetrel_chain=c_atom.get_parent().get_parent().id,
+                acceptor_chain=a_atom.get_parent().get_parent().id
+            ))
+            accepted += 1
+        t_eval_end = _t.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=accepted,
+            core_pair_generation=core,
+            extra={
+                'carbons': c_coords.shape[0],
+                'acceptors': a_coords.shape[0],
+                'candidate_density': (candidate_pairs / raw_pairs) if raw_pairs else 0.0,
+                'threshold': new_thresh,
+                'threshold_changed': changed,
+                'adapt_reason': reason,
+                'last_density': get_last_density('tetrel')
+            }
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=(t_pair_end - t_pair_start),
+            eval_seconds=(t_eval_end - t_eval_start),
+            build_seconds=0.0
+        )
         return bonds
     
     def _find_candidate_pairs(self, model) -> List[Tuple[Atom.Atom, Atom.Atom]]:

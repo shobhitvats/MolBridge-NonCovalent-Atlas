@@ -1,0 +1,11 @@
+# Curated representative PDB IDs for golden regression suite
+# Mix of small, medium, multimeric, ligand-bound, metal, aromatic rich
+1CRN
+4HHB
+2VXN
+1AKJ
+3PTB
+1TZY
+2PTC
+1UBQ
+1BNA

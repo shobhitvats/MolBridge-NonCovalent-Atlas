@@ -8,6 +8,8 @@ from typing import List, Dict, Any, Optional
 from Bio.PDB import Structure, Atom, Residue
 from dataclasses import dataclass
 from loguru import logger
+from utils.settings import get_settings
+from utils.instrumentation import init_funnel, update_counts, finalize_funnel
 
 @dataclass
 class DispersionInteraction:
@@ -77,32 +79,32 @@ class DispersionDetector:
         self.dispersion_atoms = {'C', 'S', 'P', 'F', 'CL', 'BR', 'I'}
     
     def detect_dispersion_interactions(self, structure: Structure.Structure) -> List[DispersionInteraction]:
-        """Detect London dispersion interactions in structure."""
-        interactions = []
-        
-        # Get all atoms that can participate in dispersion interactions
+        settings = get_settings()
+        if getattr(settings, 'enable_vector_geom', False):
+            try:
+                return self._vector_detect(structure)
+            except Exception:
+                return self._legacy_detect(structure)
+        return self._legacy_detect(structure)
+
+    def _legacy_detect(self, structure: Structure.Structure) -> List[DispersionInteraction]:
+        import time as _t
+        t_pair_start = _t.time()
+        interactions: List[DispersionInteraction] = []
         atoms = [atom for atom in structure.get_atoms() if atom.element in self.dispersion_atoms]
-        
-        logger.info(f"Found {len(atoms)} atoms for dispersion analysis")
-        
-        # Compare all pairs of atoms
+        raw_pairs = int(len(atoms)*(len(atoms)-1)/2)
+        candidate_pairs = 0
         for i, atom1 in enumerate(atoms):
             for atom2 in atoms[i+1:]:
-                # Skip if same residue or adjacent residues (backbone interactions)
                 if self._should_skip_pair(atom1, atom2):
                     continue
-                
                 distance = self._calculate_distance(atom1, atom2)
-                
-                # Check if within dispersion range
-                if self.min_distance <= distance <= self.distance_cutoff:
-                    # Additional check: must be close to sum of van der Waals radii
+                if self.distance_min <= distance <= self.distance_max:
                     vdw_sum = self._get_vdw_sum(atom1, atom2)
-                    
-                    if distance <= vdw_sum + 0.5:  # Allow some tolerance
+                    if distance <= vdw_sum + 0.5:
+                        candidate_pairs += 1
                         strength = self._classify_interaction_strength(distance, vdw_sum)
-                        
-                        interaction = DispersionInteraction(
+                        interactions.append(DispersionInteraction(
                             atom1=atom1,
                             atom2=atom2,
                             distance=distance,
@@ -111,10 +113,76 @@ class DispersionDetector:
                             residue2=f"{atom2.get_parent().get_resname()}{atom2.get_parent().id[1]}",
                             chain1=atom1.get_parent().get_parent().id,
                             chain2=atom2.get_parent().get_parent().id
-                        )
-                        interactions.append(interaction)
-        
-        logger.info(f"Detected {len(interactions)} London dispersion interactions")
+                        ))
+        t_eval_end = _t.time()
+        self.instrumentation = init_funnel(
+            raw_pairs=raw_pairs,
+            candidate_pairs=candidate_pairs,
+            accepted_pairs=len(interactions),
+            core_pair_generation=False,
+            extra={'atoms_considered': len(atoms), 'candidate_density': (candidate_pairs/raw_pairs) if raw_pairs else 0.0}
+        )
+        finalize_funnel(
+            self.instrumentation,
+            pair_gen_seconds=0.0,
+            eval_seconds=(t_eval_end - t_pair_start),
+            build_seconds=0.0
+        )
+        logger.info(f"[legacy] Dispersion: {len(interactions)}")
+        return interactions
+
+    def _vector_detect(self, structure: Structure.Structure) -> List[DispersionInteraction]:
+        interactions: List[DispersionInteraction] = []
+        # Collect participating atoms & coordinates
+        atoms = [atom for atom in structure.get_atoms() if atom.element in self.dispersion_atoms]
+        if len(atoms) < 2:
+            return interactions
+        import numpy as _np
+        coords = _np.vstack([a.coord for a in atoms]).astype('float32')
+        try:
+            from geometry.core import pairwise_within_cutoff
+            # Upper bound cutoff = max dispersion window
+            ia, ib = pairwise_within_cutoff(coords, coords, float(self.distance_max), use_kdtree=True)
+            core = True
+        except Exception:
+            diff = coords[:, None, :] - coords[None, :, :]
+            dist_mat = _np.linalg.norm(diff, axis=-1)
+            ii, jj = _np.where((dist_mat <= self.distance_max) & (dist_mat > 0))
+            mask = ii < jj
+            ia = ii[mask]
+            ib = jj[mask]
+            core = False
+        for i, j in zip(ia.tolist(), ib.tolist()):
+            a1 = atoms[i]; a2 = atoms[j]
+            if self._should_skip_pair(a1, a2):
+                continue
+            d = float(np.linalg.norm(a1.coord - a2.coord))
+            if not (self.distance_min <= d <= self.distance_max):
+                continue
+            vdw_sum = self._get_vdw_sum(a1, a2)
+            if d <= vdw_sum + 0.5:
+                strength = self._classify_interaction_strength(d, vdw_sum)
+                interactions.append(DispersionInteraction(
+                    atom1=a1,
+                    atom2=a2,
+                    distance=d,
+                    strength=strength,
+                    residue1=f"{a1.get_parent().get_resname()}{a1.get_parent().id[1]}",
+                    residue2=f"{a2.get_parent().get_resname()}{a2.get_parent().id[1]}",
+                    chain1=a1.get_parent().get_parent().id,
+                    chain2=a2.get_parent().get_parent().id
+                ))
+        self.instrumentation = init_funnel(
+            raw_pairs=int(len(atoms)*(len(atoms)-1)/2),
+            candidate_pairs=len(ia),
+            accepted_pairs=len(interactions),
+            core_pair_generation=core,
+            extra={
+                'atoms_considered': len(atoms),
+                'candidate_density': (len(ia)/int(len(atoms)*(len(atoms)-1)/2)) if len(atoms) > 1 else 0.0
+            }
+        )
+        logger.info(f"[vector]{'/core' if core else ''} Dispersion: {len(interactions)}")
         return interactions
     
     def _should_skip_pair(self, atom1: Atom.Atom, atom2: Atom.Atom) -> bool:
