@@ -161,13 +161,18 @@ class MainInterface:
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ All", help="Select all interaction types", key="btn_all_interactions"):
+                # Set both model state and widget state so checkboxes visually update
                 for itype in interaction_types:
                     st.session_state.selected_interactions[itype] = True
+                    wkey = f"sidebar_interaction_{itype}"
+                    st.session_state[wkey] = True
                 st.rerun()
         with col2:
             if st.button("🧹 None", help="Deselect all interaction types", key="btn_clear_interactions"):
                 for itype in interaction_types:
                     st.session_state.selected_interactions[itype] = False
+                    wkey = f"sidebar_interaction_{itype}"
+                    st.session_state[wkey] = False
                 st.rerun()
         # One-click revert all to current preset
         col_rev_all, col_save_layout = st.columns(2)
