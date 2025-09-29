@@ -335,16 +335,25 @@ class MainInterface:
             """,
             unsafe_allow_html=True,
         )
-        
-        # Quick README / Docs link just below hero
+        # Quick README / Docs links just below hero
         st.markdown(
             """
-            <div style='margin-top:-1.2rem; margin-bottom:2.2rem; text-align:center;'>
-              <a href="https://github.com/" target="_blank" style="text-decoration:none;">
-                <span style="background:linear-gradient(90deg,#00B4D8,#48CAE4); color:#18191A; padding:0.55rem 1.2rem; border-radius:999px; font-weight:700; font-size:0.95rem; box-shadow:0 2px 10px #00B4D880; display:inline-block;">
-                  📘 View Full README / Documentation
-                </span>
-              </a>
+            <div style='margin-top:-1.2rem; margin-bottom:2.2rem; text-align:center; display:flex; gap:0.85rem; justify-content:center; flex-wrap:wrap;'>
+                <a href=\"https://github.com/shobhitvats/Protein-Interaction-Analysis-Server?tab=readme-ov-file#molbridge-noncovalent-atlas\" target=\"_blank\" style=\"text-decoration:none;\" aria-label=\"Open README on GitHub\">
+                    <span style=\"background:linear-gradient(90deg,#00B4D8,#48CAE4); color:#18191A; padding:0.55rem 1.15rem; border-radius:999px; font-weight:700; font-size:0.94rem; box-shadow:0 2px 10px #00B4D880; display:inline-block; white-space:nowrap;\">
+                        📘 README
+                    </span>
+                </a>
+                <a href=\"https://github.com/shobhitvats/Protein-Interaction-Analysis-Server/blob/main/docs/SCIENTIFIC_DOCUMENTATION.md#molbridge-scientific-documentation\" target=\"_blank\" style=\"text-decoration:none;\" aria-label=\"Open Scientific Documentation\">
+                    <span style=\"background:linear-gradient(90deg,#48CAE4,#90E0EF); color:#18191A; padding:0.55rem 1.15rem; border-radius:999px; font-weight:700; font-size:0.94rem; box-shadow:0 2px 10px #48CAE480; display:inline-block; white-space:nowrap;\">
+                        🧪 Scientific Criteria
+                    </span>
+                </a>
+                <a href=\"https://github.com/shobhitvats/Protein-Interaction-Analysis-Server/blob/main/docs/TECHNICAL_DOCUMENTATION.md#molbridge-technical-documentation\" target=\"_blank\" style=\"text-decoration:none;\" aria-label=\"Open Technical Documentation\">
+                    <span style=\"background:linear-gradient(90deg,#0096C7,#00B4D8); color:#18191A; padding:0.55rem 1.15rem; border-radius:999px; font-weight:700; font-size:0.94rem; box-shadow:0 2px 10px #0096C770; display:inline-block; white-space:nowrap;\">
+                        🛠️ Technical Docs
+                    </span>
+                </a>
             </div>
             """,
             unsafe_allow_html=True,
