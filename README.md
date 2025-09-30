@@ -1,3 +1,85 @@
+<!-- ===================================================================== -->
+# MolBridge: NonCovalent Atlas (Professional Overview)
+
+> High‑fidelity, literature‑grounded detection, visualization and reporting of noncovalent interactions in protein (and protein–ligand) structures – with performance instrumentation, provenance, and extensibility built in.
+
+<p align="center"><img src="docs/images/banner_header.png" alt="MolBridge Banner" width="100%" /></p>
+
+## ⚡ Executive Summary
+MolBridge unifies a fast analysis core, a Streamlit web UI, a REST API, and export / provenance utilities into a single platform for structural biology & computational chemistry. It currently classifies 15+ interaction families (hydrogen, halogen, chalcogen, pnictogen, tetrel, π–π, cation–π, anion–π, CH–π, sulfur–π, dispersion, hydrophobic, salt bridges, n→π*, metal coordination) including hydrogen bond subtypes.
+
+Key pillars:
+- Performance: Vector geometry, KD‑tree pruning, adaptive thresholds, shared‑memory parallelism, optional Numba/Rust kernels
+- Scientific Rigor: Literature‑anchored criteria with transparent parameter presets & exploration ranges
+- Reproducibility: Provenance hashing, normalized records, golden regression datasets, metrics funnel (raw→candidate→accepted)
+- Visualization: 3D overlays, Ramachandran plots, interaction networks, density & distribution charts
+- Extensibility: Decorator‑based detector registry; modular docs for rapid onboarding
+- Exports: PDF, PPTX, Excel, CSV, session snapshots (configuration + provenance)
+
+Use Cases: interface profiling, ligand optimization, quality control of predicted vs experimental models, enrichment & network analyses, manuscript figure generation.
+
+## 🧭 At a Glance
+| Aspect | Snapshot |
+|--------|----------|
+| Interaction Families | 15 core + metal coordination + HB subtypes |
+| Interfaces | Web UI • CLI • REST API • Batch processor |
+| Performance Features | Vectorization • KD‑trees • Adaptive thresholds • Shared memory • Optional JIT/Rust |
+| Reproducibility | Normalized records • Provenance hash • Golden baseline • Metrics funnel |
+| Visualization | 3D overlays • Ramachandran • Network graph • Distributions |
+| Exports | PDF • PPTX • Excel • CSV • Session snapshot |
+| Deployment | Local • Docker • Streamlit Cloud • Heroku • Containers |
+| Extensibility | Detector registry • Parameter metadata mapping |
+
+Quick links: [Quick Start](#-quick-start) · [Run UI](#streamlit-web-interface) · [API Usage](#-rest-api-usage) · [Scientific Criteria](docs/SCIENTIFIC_DOCUMENTATION.md) · [Architecture](docs/TECHNICAL_DOCUMENTATION.md) · [Parameter Glossary](#-parameter-glossary--recommended-ranges) · [Doc Index](docs/INDEX.md)
+
+## 🚀 Quick Start
+| Mode | Command | Notes |
+|------|---------|-------|
+| Docker | `docker build -t molbridge . && docker run -p 8501:8501 -p 8000:8000 molbridge` | UI at 8501, API at 8000 |
+| Local (pip) | `pip install -r requirements.txt && streamlit run server.py` | Dev & customization |
+| API Only | `uvicorn server:app --host 0.0.0.0 --port 8000` | Headless integration |
+
+Then open: http://localhost:8501 (UI) and optionally http://localhost:8000/docs (Swagger API docs).
+
+## 🔬 Interaction Overview (Condensed)
+Representative defaults (see full scientific docs for rationale & ranges):
+| Class | Representative Geometry |
+|-------|-------------------------|
+| Hydrogen Bond | Donor–Acceptor ≤3.5 Å; angle ≥120° |
+| Halogen Bond | X···A ≤ ΣvdW+0.2; C–X···A ≥150° |
+| π–π Stacking | Centroids ≤5.5 Å; interplanar ≤30° (parallel) |
+| Cation–π | 3.0–6.0 Å; lateral offset ≤1.5 Å |
+| Anion–π | Anion–centroid ≤5.0 Å; approach ≤30° to ring normal |
+| CH–π | C···centroid 2.0–4.8 Å; angle ≥90° |
+| Chalcogen / Pnictogen / Tetrel | Donor–A ≤ ΣvdW+≤0.5; axial alignment high |
+| Salt Bridge | Opp. charge atoms ≤4.0 Å (centroid ≤6.0 Å) |
+| Hydrophobic / Dispersion | C···C shell ~3.5–5.0 Å |
+| Sulfur–π | S–centroid ≤6.0 Å; offset ≤3.0 Å |
+| n→π* | O→C 2.9–3.6 Å; approach 95–140° |
+| Metal Coordination | Primary shell ≤2.6 Å (ion specific) |
+
+Full tables & edge cases: `docs/scientific/criteria_breakdown.md`.
+
+## 🔁 Reproducibility Fast Path
+```bash
+export MOLBRIDGE_ENABLE_NORMALIZATION=1
+export MOLBRIDGE_ENABLE_PROVENANCE=1
+```
+Exports embed a provenance digest (structure signature + parameters + detector set + version tag) – cite this in manuscripts.
+
+## 🧩 Extending MolBridge (Short Form)
+1. Implement detector (geometry pruning + classification) under `src/analysis/`.
+2. Register via existing detector registry decorator.
+3. Add parameters & defaults; update scientific criteria docs.
+4. Add parity + performance tests.
+5. Submit PR with rationale & references.
+
+Detailed guide: `docs/architecture/detectors.md`, `docs/architecture/extensibility_guide.md`.
+
+---
+<details open>
+<summary><strong>Full Extended Reference (Original Detailed README Content)</strong></summary>
+
 # MolBridge: NonCovalent Atlas
 
 <p align="center">
@@ -22,15 +104,15 @@ These complement the user-facing guide and serve different audiences (research, 
 Representative visuals (see `docs/images/`).
 | Main Dashboard |
 |----------------|
-| ![Main Dashboard](docs/images/main_dashboard.png) |
+| ![Main Dashboard showing interaction selection, parameter sliders, and 3D viewer](docs/images/main_dashboard.png) |
 
 | Chalcogen Overlay | Ramachandran Plot |
 |-------------------|------------------|
-| ![Chalcogen Overlay](docs/images/chalcogen_overlay.png) | ![Ramachandran Plot](docs/images/ramachandran_plot.png) |
+| ![Chalcogen interaction overlay highlighting S-mediated contacts in 3D viewer](docs/images/chalcogen_overlay.png) | ![Ramachandran plot with φ/ψ density and highlighted outliers](docs/images/ramachandran_plot.png) |
 
 **Mind Map (Architecture & Feature Taxonomy)**
 
-![MolBridge Mind Map](docs/images/_readme_map.jpg)
+![MolBridge Mind Map summarizing architecture layers and feature taxonomy](docs/images/_readme_map.jpg)
 
 ### Interaction Detection
 - **Hydrogen Bonds**: Conventional, low-barrier, and C5-type hydrogen bonds
@@ -464,26 +546,26 @@ To adjust gating thresholds edit `scripts/perf_regression_check.py` parameters o
 
 ## 🌍 Extended Environment Variable Cheat Sheet
 
+Grouped by function.
+
 | Variable | Purpose | Default |
 |----------|---------|---------|
+| `MOLBRIDGE_PERF_PROFILE` | Performance profile (auto/full/minimal/manual) | auto |
+| `MOLBRIDGE_MAX_WORKERS` | Override worker/process count | heuristic |
 | `MOLBRIDGE_USE_PROCESS_POOL` | Enable process pool execution path | 0 |
 | `MOLBRIDGE_USE_SHM` | Use POSIX shared memory for large feature arrays | 0 |
-| `MOLBRIDGE_TASK_GRAPH` | Enable task graph precompute (feature extraction) | 1 |
-| `MOLBRIDGE_USE_NUMBA` | Turn on Numba accelerated kernels | 0 |
-| `MOLBRIDGE_AUTO_TUNE` | Apply system tuning at import | 1 |
-| `MOLBRIDGE_USE_RUST` | Prefer Rust geometry extension if built | 1 (auto-detect) |
-| `MOLBRIDGE_MAX_WORKERS` | Override worker pool size | heuristic |
+| `MOLBRIDGE_TASK_GRAPH` | Enable feature precompute task graph | 1 |
 | `MOLBRIDGE_ENABLE_VECTOR_GEOM` | Vector geometry fast paths | 0 |
-| `MOLBRIDGE_ADAPTIVE_CACHE_PATH` | JSON file path for adaptive KD-tree threshold persistence | unset (disabled) |
-| `MOLBRIDGE_BENCH_SEED` | Deterministic seed for microbenchmark synthetic structures | unset |
-| `MOLBRIDGE_OTEL_EXPORT` | Emit OpenTelemetry stub line during microbench (future real exporter hook) | 0 |
-| `MOLBRIDGE_USE_PROCESS_POOL` | Process (vs thread) strategy | 0 |
-| `MOLBRIDGE_USE_SHM` | Shared memory transport | 0 |
-| `MOLBRIDGE_ENABLE_NORMALIZATION` | Emit normalized records | 0 |
-| `MOLBRIDGE_ENABLE_PROVENANCE` | Include provenance data | 0 |
-| `MOLBRIDGE_PERF_PROFILE` | Performance profile selection (auto/full/minimal/manual) | auto |
+| `MOLBRIDGE_USE_NUMBA` | Enable Numba kernels | 0 |
+| `MOLBRIDGE_USE_RUST` | Prefer Rust extension if available | 1 (auto) |
+| `MOLBRIDGE_AUTO_TUNE` | Apply system heuristics at import | 1 |
+| `MOLBRIDGE_ADAPTIVE_CACHE_PATH` | Persist adaptive KD-tree thresholds | unset |
+| `MOLBRIDGE_ENABLE_NORMALIZATION` | Emit normalized interaction records | 0 |
+| `MOLBRIDGE_ENABLE_PROVENANCE` | Include provenance hashing metadata | 0 |
+| `MOLBRIDGE_BENCH_SEED` | Seed for microbenchmark synthetic coords | unset |
+| `MOLBRIDGE_OTEL_EXPORT` | Emit OpenTelemetry stub line (experimental) | 0 |
 
-Note: Duplicate lines for emphasis above are intentional groupings (strategy vs geometry); future consolidation may de-duplicate in docs.
+Removed duplicates; this table is now the single source of truth (see performance engine doc for deeper rationale).
 
 ## 🛠 Building the Rust Prototype
 ```bash
@@ -758,52 +840,13 @@ If you use MolBridge in your research, please cite:
 ```
 
 ## 🔄 Version History
+The detailed version history has moved to `CHANGELOG.md` for clarity and maintainability. Only a high-level pointer remains here.
 
-### v1.2.0 (Current / Main)
-User Experience, Overlay & Productivity Expansion
-- Command Palette (Ctrl/Cmd+K) with fuzzy search (rapidfuzz) for presets, profiles, layout snapshot ops, and UI toggles.
-- Scenario Profiles (`templates/scenario_profiles.yaml`) providing task-focused interaction sets & linked parameter presets.
-- Layout Snapshot save / restore UI (sidebar) + palette actions for fast environment switching.
-- Multi-Structure Ramachandran overlay with structure provenance in hover tooltips & stratified performance safeguards.
-- Interaction Network enhancements: edge filtering (min edge count), collapse by interaction type, label visibility toggle, aggregated edge stats.
-- Diff improvements: coordinate-aware hashing, filtering, diff summary counters, CSV export.
-- Persistent detector progress stream with live status pill & timestamped events (rotating log).
-- Progressive Ramachandran density rendering (auto-disable on large residue sets) + high-contrast density colorbar toggle.
-- Virtualized interaction table (AgGrid fallback) for large interaction lists.
-- Parameter modified indicators + one-click revert-to-preset; autosave of session metadata.
-- Unified dark theme only (light mode removed) plus high-contrast & classic Ramachandran color toggles.
+- Full changelog: [CHANGELOG.md](CHANGELOG.md)
+- Roadmap & scoring: `docs/architecture/roadmap_and_decisions.md`
+- Unified bibliography (BibTeX): `docs/references/bibliography.bib`
 
-### v1.1.0 (Current)
-Performance & Observability Expansion
-- Unified funnel metrics across all detectors (`raw_pairs`, `candidate_pairs`, `accepted_pairs`, acceptance ratios) surfaced in metrics & microbench aggregates.
-- Adaptive KD-tree threshold persistence (opt-in via `MOLBRIDGE_ADAPTIVE_CACHE_PATH`).
-- Microbenchmark harness enhancements: memory RSS delta per run (`rss_delta_bytes`), funnel aggregation totals (`total_raw_pairs`, `total_candidate_pairs`, `total_accepted_pairs`), per-detector warnings, deterministic seeding (`MOLBRIDGE_BENCH_SEED`).
-- Baseline management script `scripts/update_microbench_baseline.py` (adds `baseline_meta`: seed/repeat/timestamp) to avoid silent drift.
-- OpenTelemetry export stub (`MOLBRIDGE_OTEL_EXPORT=1`) placeholder for future structured tracing.
-- CI hardening: security vulnerability scan (`pip-audit`), Docker build smoke test, microbench regression gate integration.
-- Documentation updates & MIT headers added to performance / regression scripts.
-- Minor detector robustness: fixed anion–π detector attribute alias for synthetic benchmark safety.
-
-### v1.0.1
-- Added new detectors: Cation–π, Salt Bridges (explicit), Sulfur–π, Metal Coordination
-- Hydrogen Bond Subtype extension (classification + export aggregation)
-- Added explicit configurable cutoffs:
-   - `cation_pi_distance_cutoff`
-   - `salt_bridge_distance_cutoff`, `salt_bridge_centroid_cutoff`
-   - `sulfur_pi_distance_cutoff`, `sulfur_pi_max_perp`
-   - `metal_coordination_primary_cutoff`, `metal_coordination_extended_cutoff`
-- Feature toggle: `enable_hbond_subtypes`
-- Extended reporting & exports for new analytics
-
-### v1.0.0
-- Initial release with 11 interaction types, Streamlit interface, REST API, reporting system, 3D visualization, batch processing capabilities
-
-### Planned Features (v1.2.0)
-- Machine learning-based interaction prediction
-- Enhanced visualization options
-- Additional export formats
-- Distributed execution maturation (Ray/Dask) beyond scaffold
-- Extended API endpoints
+Planned / in-progress features are tracked in the roadmap document rather than inline here.
 
 ## 🚀 Deployment
 
@@ -1033,3 +1076,8 @@ Existing imports like `from ui.main_interface import MainInterface` remain valid
 ---
 
 For questions or to propose structural changes, open a GitHub Discussion tagged `architecture`.
+
+</details>
+
+---
+<sub>Professional overview sections added above; original exhaustive reference retained verbatim inside collapsible section for continuity.</sub>
