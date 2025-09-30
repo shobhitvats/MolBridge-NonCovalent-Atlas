@@ -28,6 +28,7 @@ jobs:
           pip install pytest pytest-benchmark psutil
       - name: Run tests
         env:
+          PYTHONPATH: src
           MOLBRIDGE_ENABLE_VECTOR_GEOM: '1'
         run: |
           pytest -q --disable-warnings --maxfail=1
