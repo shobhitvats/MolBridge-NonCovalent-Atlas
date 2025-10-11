@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: If you use MolBridge in academic work, please cite it using the metadata below.
+title: MolBridge: NonCovalent Atlas for Protein Interaction Analysis
+authors:
+  - family-names: YourSurname
+    given-names: YourGivenName
+    orcid: https://orcid.org/0000-0000-0000-0000
+version: 1.2.0
+date-released: 2025-09-30
+repository-code: https://github.com/shobhitvats/Protein-Interaction-Analysis-Server
+license: MIT
+keywords:
+  - structural biology
+  - noncovalent interactions
+  - protein analysis
+  - visualization
+  - cheminformatics
+abstract: >-
+  MolBridge is an open-source platform (web UI + API + CLI) for high-fidelity, literature-grounded detection,
+  visualization, and reporting of a broad spectrum of noncovalent interactions in protein and protein–ligand structures.

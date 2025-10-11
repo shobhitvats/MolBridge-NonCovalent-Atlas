@@ -623,15 +623,22 @@ class InteractionPlots:
                 if hasattr(tr, 'showscale'):
                     tr.showscale = False
         fig = go.Figure(data=[*density_traces, *region_traces, *halo_traces])
+        # Enforce square aspect ratio: make plotting area square and lock axis scaling.
+        axis_span_px = 600  # inner square size
+        margin_l = 70; margin_r = 70; margin_t = 70; margin_b = 90  # balanced margins; legend sits just below
         fig.update_layout(
             title='Ramachandran Plot',
-            xaxis=dict(range=[-180, 180], dtick=60, title='φ (degrees)'),
-            yaxis=dict(range=[-180, 180], dtick=60, title='ψ (degrees)'),
-            width=770,
-            height=670,
+            xaxis=dict(
+                range=[-180, 180], dtick=60, title='φ (degrees)', constrain='domain'
+            ),
+            yaxis=dict(
+                range=[-180, 180], dtick=60, title='ψ (degrees)', scaleanchor='x', scaleratio=1, constrain='domain'
+            ),
+            width=axis_span_px + margin_l + margin_r,
+            height=axis_span_px + margin_t + margin_b,
             legend=dict(
                 orientation='h',
-                yanchor='bottom', y=-0.30,
+                yanchor='top', y=-0.08,
                 xanchor='center', x=0.5,
                 title=dict(text=''),
                 font=dict(size=11),
@@ -639,14 +646,14 @@ class InteractionPlots:
                 itemdoubleclick='toggleothers'
             ),
             shapes=shapes,
-            margin=dict(l=60, r=70, t=70, b=210),
+            margin=dict(l=margin_l, r=margin_r, t=margin_t, b=margin_b),
             plot_bgcolor='rgba(10,10,30,0.85)',
             paper_bgcolor='rgba(0,0,0,0)'
         )
         fig.update_xaxes(title_standoff=18)
         fig.update_yaxes(title_standoff=18)
-        # Updated for Streamlit API deprecation: use width parameter instead of use_container_width
-        st.plotly_chart(fig, width="stretch")
+        # Render with fixed square dimensions; container stretch removed to preserve aspect ratio
+        st.plotly_chart(fig)
         st.caption("Point size ∝ √(interaction count). Use legend to reveal reference markers.")
         # Export
         csv = rama_df.to_csv(index=False).encode()

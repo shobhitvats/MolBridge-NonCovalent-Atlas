@@ -1,4 +1,8 @@
-# Python caches
+###############################################
+# MolBridge .gitignore (consolidated)
+###############################################
+
+# Python bytecode / extensions
 __pycache__/
 *.py[cod]
 *.pyo
@@ -7,38 +11,42 @@ __pycache__/
 
 # Virtual environments
 .env
-.venv
+.venv/
 venv/
 ENV/
-
-# Python artifacts
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
 
 # Logs & reports
 *.log
 logs/
 *.coverage
 coverage.xml
+htmlcov/
 
-# Local cache / manifests
-cache/
-*.manifest.json
-
-# Streamlit & runtime
-.streamlit/cache/
-.streamlit/secrets.toml
-.cache/
+# Caches / runtime state
 cache/
 cache/**
-!/cache/README.md
+!.gitkeep
+*.manifest.json
+.cache/
+.pytest_cache/
+.benchmarks/
 
-# Logs & debug
-*.log
-logs/
+# Streamlit
+.streamlit/cache/
+.streamlit/secrets.toml
+
+# Benchmark & performance artifacts
 microbench_baseline.json
+perf.data
+*.prof
+*.pstats
+benchmarks/
+performance_runs/
+adaptive_thresholds.json
+
+# Data / structures (unless curated fixtures)
+*.pdb
+*.cif
 
 # Jupyter
 .ipynb_checkpoints/
@@ -55,26 +63,33 @@ dist/
 *.egg-info/
 .eggs/
 
-# Reports / exports
+# Archives / exports
 *.zip
 *.tar.gz
 
-# Session artifacts
+# Session artifacts (legacy path safety)
 sessions/
 **/sessions/
 
-# Temp files
+# Temporary files
 *.tmp
 *.bak
 *~
 
-# Coverage / testing
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Node (if any future frontend assets)
+# Node modules (future frontend assets)
 node_modules/
 
-# Local overrides
+# Rust build output
+rust/target/
+
+# Local overrides / secrets
 local_settings.py
+.env.local
+
+# Ignore large reference PDFs if opting out (uncomment to exclude)
+# IUPAC/
+# Other References/
+
+###############################################
+# End of file
+###############################################
