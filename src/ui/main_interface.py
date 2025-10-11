@@ -1146,7 +1146,18 @@ class MainInterface:
             st.session_state.rama_source_structure = structure
             
             if not structure:
-                st.error(f"Failed to load structure {pdb_id}")
+                st.error(f"❌ Failed to load structure {pdb_id}")
+                st.warning("""
+                **Possible reasons:**
+                - The PDB server is experiencing high load or timeouts
+                - The PDB ID may be incorrect
+                - Network connectivity issues
+                
+                **Try:**
+                - Wait a moment and try again
+                - Verify the PDB ID at [RCSB PDB](https://www.rcsb.org/)
+                - Check your internet connection
+                """)
                 return
             
             # Step 2: Run high-performance analysis with selected interactions

@@ -352,27 +352,76 @@ class PDBHandler:
             return None
     
     def _download_pdb_file(self, pdb_id: str, assembly: str) -> Optional[str]:
-        """Download PDB file from RCSB."""
-        try:
-            if assembly == "biological":
-                # Try biological assembly first
-                url = f"https://files.rcsb.org/download/{pdb_id}.pdb1"
-                response = requests.get(url, timeout=30)
+        """Download PDB file from RCSB with retry logic and fallback mirrors."""
+        import time
+        
+        # List of mirror URLs to try in order
+        mirrors = [
+            "https://files.rcsb.org/download",
+            "https://files.wwpdb.org/pub/pdb/data/structures/divided/pdb",  # Alternative mirror
+        ]
+        
+        max_retries = 3
+        base_timeout = 30
+        
+        for mirror_idx, base_url in enumerate(mirrors):
+            for attempt in range(max_retries):
+                try:
+                    # Construct URL based on mirror type
+                    if "wwpdb.org" in base_url:
+                        # wwPDB uses a different structure: /xx/pdbXXXX.ent.gz
+                        subdir = pdb_id[1:3].lower()
+                        url = f"{base_url}/{subdir}/pdb{pdb_id.lower()}.ent.gz"
+                        import gzip
+                        response = requests.get(url, timeout=base_timeout * (attempt + 1))
+                        response.raise_for_status()
+                        # Decompress gzip content
+                        return gzip.decompress(response.content).decode('utf-8')
+                    else:
+                        # RCSB standard URLs
+                        if assembly == "biological":
+                            # Try biological assembly first
+                            url = f"{base_url}/{pdb_id}.pdb1"
+                            response = requests.get(url, timeout=base_timeout * (attempt + 1))
+                            
+                            if response.status_code == 404:
+                                # Fallback to asymmetric unit
+                                url = f"{base_url}/{pdb_id}.pdb"
+                                response = requests.get(url, timeout=base_timeout * (attempt + 1))
+                        else:
+                            url = f"{base_url}/{pdb_id}.pdb"
+                            response = requests.get(url, timeout=base_timeout * (attempt + 1))
+                        
+                        response.raise_for_status()
+                        return response.text
                 
-                if response.status_code == 404:
-                    # Fallback to asymmetric unit
-                    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-                    response = requests.get(url, timeout=30)
-            else:
-                url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-                response = requests.get(url, timeout=30)
+                except requests.Timeout as e:
+                    logger.warning(f"Timeout downloading {pdb_id} from {base_url} (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        # Exponential backoff: wait 2^attempt seconds
+                        wait_time = 2 ** attempt
+                        logger.info(f"Retrying in {wait_time} seconds...")
+                        time.sleep(wait_time)
+                    continue
+                    
+                except requests.RequestException as e:
+                    logger.warning(f"Failed to download {pdb_id} from {base_url} (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        time.sleep(wait_time)
+                    continue
+                
+                except Exception as e:
+                    logger.warning(f"Unexpected error downloading {pdb_id} from {base_url}: {e}")
+                    break  # Don't retry on unexpected errors, try next mirror
             
-            response.raise_for_status()
-            return response.text
-            
-        except requests.RequestException as e:
-            logger.error(f"Failed to download {pdb_id}: {e}")
-            return None
+            # If we got here, all retries for this mirror failed, try next mirror
+            if mirror_idx < len(mirrors) - 1:
+                logger.info(f"Trying alternative mirror for {pdb_id}...")
+        
+        # All mirrors and retries exhausted
+        logger.error(f"Failed to download {pdb_id} from all sources after {max_retries} retries")
+        return None
     
     def _process_structure(self, structure: Structure.Structure) -> Structure.Structure:
         """Process structure according to configuration settings."""
