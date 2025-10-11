@@ -33,10 +33,11 @@ class InteractionConfig:
     
     # Chalcogen bonds
     chalcogen_distance_cutoff: float = 4.0
-    # Replace single angle with explicit theta range + phi (delta) max deviation
+    # Theta range + phi (delta) range for dihedral angle
     chalcogen_theta_min: float = 115.0
     chalcogen_theta_max: float = 155.0
-    chalcogen_phi_max: float = 50.0
+    chalcogen_phi_min: float = -50.0  # Typical filter range
+    chalcogen_phi_max: float = 50.0   # Dihedral can be -180 to +180, but ±50 is typical
     
     # Pnictogen bonds
     pnictogen_distance_cutoff: float = 4.0

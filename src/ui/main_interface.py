@@ -2665,6 +2665,15 @@ class MainInterface:
             self._ensure_extensions(st.session_state.current_pdb, result)
             st.subheader(f"Interactions in {st.session_state.current_pdb}")
             interactions_df = self._create_interactions_dataframe(result)
+            
+            # Add interaction type filter (inter-chain vs intra-chain)
+            interaction_category = st.radio(
+                "Show:",
+                ["All Interactions", "Inter-chain Only", "Intra-chain Only"],
+                horizontal=True,
+                help="Filter by whether interactions occur between different chains or within the same chain"
+            )
+            
             # Interaction table filters (chain, strength, residue substring)
             if not interactions_df.empty:
                 cols_f = st.columns(3)
@@ -2674,6 +2683,14 @@ class MainInterface:
                     strength_filter = st.selectbox("Strength", options=["All","Strong","Moderate","Weak"], index=0)
                 with cols_f[2]:
                     residue_search = st.text_input("Residue Contains", placeholder="e.g. ASP")
+                
+                # Apply interaction category filter
+                if 'Chain 1' in interactions_df.columns and 'Chain 2' in interactions_df.columns:
+                    if interaction_category == "Inter-chain Only":
+                        interactions_df = interactions_df[interactions_df['Chain 1'] != interactions_df['Chain 2']]
+                    elif interaction_category == "Intra-chain Only":
+                        interactions_df = interactions_df[interactions_df['Chain 1'] == interactions_df['Chain 2']]
+                
                 if chain_filter != "All" and 'chain' in interactions_df.columns:
                     interactions_df = interactions_df[interactions_df['chain'] == chain_filter]
                 if strength_filter != "All" and 'strength' in interactions_df.columns:
@@ -2683,23 +2700,43 @@ class MainInterface:
             if not interactions_df.empty:
                 total_interactions = sum(len(interactions) for interactions in result.get('interactions', {}).values())
                 filtered_count = len(interactions_df)
+                
+                # Calculate inter-chain and intra-chain counts from the original unfiltered dataframe
+                original_df = self._create_interactions_dataframe(result)
+                if 'Chain 1' in original_df.columns and 'Chain 2' in original_df.columns:
+                    inter_chain_count = len(original_df[original_df['Chain 1'] != original_df['Chain 2']])
+                    intra_chain_count = len(original_df[original_df['Chain 1'] == original_df['Chain 2']])
+                    
+                    # Display metrics
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    with col_m1:
+                        st.metric("Total Interactions", total_interactions)
+                    with col_m2:
+                        st.metric("Inter-chain", inter_chain_count, help="Interactions between different chains")
+                    with col_m3:
+                        st.metric("Intra-chain", intra_chain_count, help="Interactions within the same chain")
+                
                 if active_filters:
-                    st.metric("Filtered Interactions Shown", f"{filtered_count}", f"of {total_interactions} total")
+                    st.caption(f"Showing {filtered_count} of {total_interactions} total interactions after applying filters")
+                
+                # Create display dataframe without the Chain 1 and Chain 2 columns
+                display_df = interactions_df.drop(columns=['Chain 1', 'Chain 2'], errors='ignore')
+                
                 # Virtualized table for large datasets
-                if len(interactions_df) > 1200:
+                if len(display_df) > 1200:
                     try:
                         try:
                             from st_aggrid import AgGrid, GridOptionsBuilder  # type: ignore
-                            gob = GridOptionsBuilder.from_dataframe(interactions_df)
+                            gob = GridOptionsBuilder.from_dataframe(display_df)
                             gob.configure_default_column(resizable=True, sortable=True, filter=True)
-                            AgGrid(interactions_df, gridOptions=gob.build(), height=420, theme='streamlit')
+                            AgGrid(display_df, gridOptions=gob.build(), height=420, theme='streamlit')
                         except ModuleNotFoundError:
                             st.info("Install streamlit-aggrid to enable virtualized large table rendering")
-                            st.dataframe(interactions_df, width="stretch")
+                            st.dataframe(display_df, width="stretch")
                     except Exception:
-                        st.dataframe(interactions_df, width="stretch")
+                        st.dataframe(display_df, width="stretch")
                 else:
-                    st.dataframe(interactions_df, width="stretch")
+                    st.dataframe(display_df, width="stretch")
                 # Export, copy, and share options
                 col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
@@ -3533,10 +3570,16 @@ class MainInterface:
                     # Handle different angle fields for different interaction types
                     angle_info = self._get_angle_display(interaction, interaction_type)
                     
+                    # Extract chain information separately for filtering
+                    chain1 = self._get_interaction_property(interaction, 'chain1', '')
+                    chain2 = self._get_interaction_property(interaction, 'chain2', '')
+                    
                     interactions_data.append({
                         "Type": get_interaction_display_names().get(resolved_key, resolved_key.title()),
-                        "Residue 1": f"{self._get_interaction_property(interaction, 'residue1', '')} {self._get_interaction_property(interaction, 'chain1', '')}",
-                        "Residue 2": f"{self._get_interaction_property(interaction, 'residue2', '')} {self._get_interaction_property(interaction, 'chain2', '')}",
+                        "Residue 1": f"{self._get_interaction_property(interaction, 'residue1', '')} {chain1}",
+                        "Residue 2": f"{self._get_interaction_property(interaction, 'residue2', '')} {chain2}",
+                        "Chain 1": chain1,
+                        "Chain 2": chain2,
                         "Distance (Å)": f"{self._get_interaction_property(interaction, 'distance', 0):.2f}",
                         "Angle (°)": angle_info,
                         "Strength": self._get_interaction_property(interaction, 'strength', 'Moderate')

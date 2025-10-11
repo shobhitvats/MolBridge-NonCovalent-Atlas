@@ -20,7 +20,7 @@ REGISTRY: Dict[str, List[Dict[str, Any]]] = {
     'chalcogenbond': [
         {'field': 'chalcogen_distance_cutoff', 'label': 'Distance (Å)', 'min': 3.0, 'max': 6.0, 'step': 0.1, 'help': 'Chalcogen to acceptor distance'},
         {'fields': ('chalcogen_theta_min', 'chalcogen_theta_max'), 'label': 'Theta Range (°)', 'min': 90.0, 'max': 180.0, 'step': 1.0, 'help': 'Allowed θ window (centroid→S vs S→acceptor). Drag ends to set min & max.'},
-        {'field': 'chalcogen_phi_max', 'label': 'Phi Max (°)', 'min': 10.0, 'max': 90.0, 'step': 1.0, 'help': 'Maximum |φ| (out-of-plane / delta deviation)'}
+        {'fields': ('chalcogen_phi_min', 'chalcogen_phi_max'), 'label': 'Delta/Phi Range (°)', 'min': -180.0, 'max': 180.0, 'step': 1.0, 'help': 'Dihedral angle range for rotational deviation. Drag ends to set min & max. Typical: -50° to +50°'}
     ],
     'pnictogenbond': [
         {'field': 'pnictogen_distance_cutoff', 'label': 'Distance (Å)', 'min': 3.0, 'max': 6.0, 'step': 0.1, 'help': 'Pnictogen to acceptor distance'},

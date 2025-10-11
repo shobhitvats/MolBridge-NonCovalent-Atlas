@@ -1,6 +1,7 @@
 """
 Chalcogen bond detection for protein structures.
-Detects S/Se/Te σ-hole donor interactions with O/N/S acceptors using directionality angles θ (115–155°) and δ (±50°), distance ≤ 3.6 Å.
+Detects S/Se/Te σ-hole donor interactions with O/N/S acceptors using directionality angles θ (115–155°) and δ (-180° to 180°, typically filtered to ±50°), distance ≤ 3.6 Å.
+Delta (δ) represents a dihedral angle quantifying rotational deviation around the chalcogen-acceptor axis.
 """
 
 import numpy as np
@@ -25,7 +26,7 @@ class ChalcogenBond:
     acceptor_atom: Atom.Atom
     distance: float
     theta_angle: float  # θ angle (115–155°)
-    delta_angle: float  # δ angle (±50°) 
+    delta_angle: float  # δ angle: dihedral/torsional deviation (-180° to 180°, typically ±50°)
     strength: str
     chalcogen_residue: str
     acceptor_residue: str
@@ -50,7 +51,8 @@ class ChalcogenBondDetector:
         # Theta range now user-configurable
         self.theta_min = getattr(self.interaction_config, 'chalcogen_theta_min', 115.0)
         self.theta_max = getattr(self.interaction_config, 'chalcogen_theta_max', 155.0)
-        # Phi (delta) absolute max deviation
+        # Phi (delta) range - out-of-plane deviation limits
+        self.delta_min = getattr(self.interaction_config, 'chalcogen_phi_min', -50.0)
         self.delta_max = getattr(self.interaction_config, 'chalcogen_phi_max', 50.0)
         
         # Chalcogen atoms with σ-holes (group 16 elements)
@@ -121,7 +123,7 @@ class ChalcogenBondDetector:
                                             except Exception as e:
                                                 logger.warning(f"Error calculating chalcogen angles: {e}; fallback defaults")
                                                 theta, delta = 135.0, 0.0
-                                            if (self.theta_min <= theta <= self.theta_max) and (abs(delta) <= self.delta_max):
+                                            if (self.theta_min <= theta <= self.theta_max) and (self.delta_min <= delta <= self.delta_max):
                                                 bonds.append(ChalcogenBond(
                                                     chalcogen_atom=sulfur,
                                                     acceptor_atom=other_atom,
@@ -320,7 +322,7 @@ class ChalcogenBondDetector:
             distance = float(dist_vec[i])
             theta = float(theta_vals[i])
             delta = float(delta_vals[i])
-            if (self.theta_min <= theta <= self.theta_max) and (abs(delta) <= self.delta_max):
+            if (self.theta_min <= theta <= self.theta_max) and (self.delta_min <= delta <= self.delta_max):
                 bonds.append(ChalcogenBond(
                     chalcogen_atom=s_atom,
                     acceptor_atom=a_atom,
@@ -391,6 +393,7 @@ class ChalcogenBondDetector:
         """
         Calculate delta angle using reference implementation.
         Dihedral angle for out-of-plane deviation.
+        Ranges from -180° to +180°, typically filtered to ±50°.
         """
         try:
             centroid = self._calculate_centroid_ref(bonded_atoms)
